@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include "utils.c"
 
+
 // Baudrate settings are defined in <asm/termbits.h>, which is
 // included by <termios.h>
 #define BAUDRATE B38400
@@ -39,17 +40,10 @@ void prepareSet() {
     SET[4] = FLAG;
 }
 
-void prepareUA() {
-    UA[0] = FLAG;
-    UA[1] = A;
-    UA[2] = C_UA;
-    UA[3] = A ^ C_UA;
-    UA[4] = FLAG;
-}
-
 void sendSet() {
     int sentBytes = 0;
-    sentBytes = write(fd, SET, 5);
+    sentBytes = write(fd, SET, BUF_SIZE);
+    printf("[%x,%x,%x,%x,%x]\n", SET[0], SET[1], SET[2], SET[3], SET[4]);
     printf("Sent bytes: %d ", sentBytes);
 }
 
@@ -190,6 +184,49 @@ int main(int argc, char *argv[])
     
     sleep(1); // wait until all the bytes have been written to the reader
 
+    // Read UA
+    // Loop for input
+    unsigned char buf[BUF_SIZE]; // +1: Save space for the final '\0' char
+
+    while (STOP == FALSE)
+    {
+        
+        // Returns after 5 chars have been input
+        int bytes = read(fd, buf, BUF_SIZE);
+        printf("Read %d bytes\n", bytes);
+        printf("Read [%x,%x,%x,%x,%x]\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
+        
+        if (buf[0] == FLAG) {
+            if (buf[1] == A) {
+                if (buf[2] == C_UA) {
+                    if (buf[3] == (A ^ C_UA)) {
+                        if (buf[4] == FLAG) {
+                            STOP = TRUE;
+                        }
+                        else {
+                            STOP = FALSE;
+                        }
+                    }
+                    else {
+                        STOP = FALSE;
+                    }
+                }
+                else {
+                    STOP = FALSE;
+                }
+            }
+            else {
+                STOP = FALSE;
+            }
+        }
+        else {
+            STOP = FALSE;
+        }
+    }
+
+    if (STOP == TRUE) {
+        printf("Received UA successfully!\n");
+    }
 
 
     // Wait until all bytes have been written to the serial port

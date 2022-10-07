@@ -24,9 +24,26 @@
 #define C_SET 0x03
 #define C_UA 0x07
 
+int fd;
+unsigned char UA[5];
+
 #define BUF_SIZE 256
 
 volatile int STOP = FALSE;
+
+void prepareUA() {
+    UA[0] = FLAG;
+    UA[1] = A;
+    UA[2] = C_UA;
+    UA[3] = A ^ C_UA;
+    UA[4] = FLAG;
+}
+
+void sendUA() {
+    int sentBytes = 0;
+    sentBytes = write(fd, UA, BUF_SIZE);
+    printf("Sent bytes: %d ", sentBytes);
+}
 
 int main(int argc, char *argv[])
 {
@@ -45,7 +62,7 @@ int main(int argc, char *argv[])
 
     // Open serial port device for reading and writing and not as controlling tty
     // because we don't want to get killed if linenoise sends CTRL-C.
-    int fd = open(serialPortName, O_RDWR | O_NOCTTY);
+    fd = open(serialPortName, O_RDWR | O_NOCTTY);
     if (fd < 0)
     {
         perror(serialPortName);
@@ -72,7 +89,7 @@ int main(int argc, char *argv[])
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 1 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -100,12 +117,48 @@ int main(int argc, char *argv[])
     {
         
         // Returns after 5 chars have been input
-        int bytes = read(fd, buf, 5);
-        printf("[%x,%x,%x,%x,%x]\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
+        int bytes = read(fd, buf, BUF_SIZE);
+        printf("SET received = [%x,%x,%x,%x,%x]\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
 
-        if (buf[bytes] == FLAG)
-            STOP = TRUE;
+        if (buf[0] == FLAG) {
+            if (buf[1] == A) {
+                if (buf[2] == C_SET) {
+                    if (buf[3] == (A ^ C_SET)) {
+                        if (buf[4] == FLAG) {
+                            STOP = TRUE;
+                        }
+                        else {
+                            STOP = FALSE;
+                        }
+                    }
+                    else {
+                        STOP = FALSE;
+                    }
+                }
+                else {
+                    STOP = FALSE;
+                }
+            }
+            else {
+                STOP = FALSE;
+            }
+        }
+        else {
+            STOP = FALSE;
+        }
     }
+
+    if (STOP == TRUE) {
+        printf("Received SET successfully!\n");
+    }
+
+    prepareUA();
+
+    sendUA();
+
+    sleep(1); // wait until all the bytes have been written to the receiver
+
+
 
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
@@ -120,7 +173,7 @@ int main(int argc, char *argv[])
     sleep(1);
 
     // Restore the old port settings
-    if (tcsetattr(fd, TCSANOW, &oldtio) == -1)
+    if (tcsetattr(fd, TCSANOW, &oldtio) == -1) 
     {
         perror("tcsetattr");
         exit(-1);
