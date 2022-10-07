@@ -43,8 +43,7 @@ void prepareSet() {
 void sendSet() {
     int sentBytes = 0;
     sentBytes = write(fd, SET, BUF_SIZE);
-    printf("[%x,%x,%x,%x,%x]\n", SET[0], SET[1], SET[2], SET[3], SET[4]);
-    printf("Sent bytes: %d ", sentBytes);
+    printf("Sent to reader [%x,%x,%x,%x,%x]\n", SET[0], SET[1], SET[2], SET[3], SET[4]);
 }
 
 void receiveUA(int fd) {
@@ -193,9 +192,8 @@ int main(int argc, char *argv[])
         
         // Returns after 5 chars have been input
         int bytes = read(fd, buf, BUF_SIZE);
-        printf("Read %d bytes\n", bytes);
-        printf("Read [%x,%x,%x,%x,%x]\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
-        
+        printf("UA received [%x,%x,%x,%x,%x]\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
+
         if (buf[0] == FLAG) {
             if (buf[1] == A) {
                 if (buf[2] == C_UA) {

@@ -42,7 +42,7 @@ void prepareUA() {
 void sendUA() {
     int sentBytes = 0;
     sentBytes = write(fd, UA, BUF_SIZE);
-    printf("Sent bytes: %d ", sentBytes);
+    printf("Sent to writer [%x,%x,%x,%x,%x]\n", UA[0], UA[1], UA[2], UA[3], UA[4]);
 }
 
 int main(int argc, char *argv[])
