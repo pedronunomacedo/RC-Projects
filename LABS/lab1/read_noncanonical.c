@@ -120,32 +120,7 @@ int main(int argc, char *argv[])
         int bytes = read(fd, buf, BUF_SIZE);
         printf("SET received = [%x,%x,%x,%x,%x]\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
 
-        if (buf[0] == FLAG) {
-            if (buf[1] == A) {
-                if (buf[2] == C_SET) {
-                    if (buf[3] == (A ^ C_SET)) {
-                        if (buf[4] == FLAG) {
-                            STOP = TRUE;
-                        }
-                        else {
-                            STOP = FALSE;
-                        }
-                    }
-                    else {
-                        STOP = FALSE;
-                    }
-                }
-                else {
-                    STOP = FALSE;
-                }
-            }
-            else {
-                STOP = FALSE;
-            }
-        }
-        else {
-            STOP = FALSE;
-        }
+        if (buf[0] == FLAG && buf[1] == A && buf[2] == C_SET && buf[3] == (A ^ C_SET) && buf[4] == FLAG) STOP = TRUE;
     }
 
     if (STOP == TRUE) {

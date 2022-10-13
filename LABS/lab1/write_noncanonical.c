@@ -95,6 +95,7 @@ void receiveUA(int fd) {
         case 4: // State BCC_OK
             if (ch == UA[4]) {
                 state = 5; // Go to the final state
+                STOP = TRUE;
             }
             else {
                 state = 0;
@@ -150,8 +151,8 @@ int main(int argc, char *argv[])
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 1;  // Blocking read until 5 chars received
+    newtio.c_cc[VTIME] = 1; // Inter-character timer unused
+    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -192,34 +193,9 @@ int main(int argc, char *argv[])
         
         // Returns after 5 chars have been input
         int bytes = read(fd, buf, BUF_SIZE);
-        printf("UA received [%x,%x,%x,%x,%x]\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
+        printf("UA received = [%x,%x,%x,%x,%x]\n", buf[0], buf[1], buf[2], buf[3], buf[4]);
 
-        if (buf[0] == FLAG) {
-            if (buf[1] == A) {
-                if (buf[2] == C_UA) {
-                    if (buf[3] == (A ^ C_UA)) {
-                        if (buf[4] == FLAG) {
-                            STOP = TRUE;
-                        }
-                        else {
-                            STOP = FALSE;
-                        }
-                    }
-                    else {
-                        STOP = FALSE;
-                    }
-                }
-                else {
-                    STOP = FALSE;
-                }
-            }
-            else {
-                STOP = FALSE;
-            }
-        }
-        else {
-            STOP = FALSE;
-        }
+        if (buf[0] == FLAG && buf[1] == A && buf[2] == C_UA && buf[3] == (A ^ C_UA) && buf[4] == FLAG) STOP = TRUE;
     }
 
     if (STOP == TRUE) {

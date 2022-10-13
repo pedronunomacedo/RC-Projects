@@ -89,87 +89,41 @@ void ttclose (int fd) {
     close(fd);
 }
 
-/**
- * @brief 
- * 
- * @param fd 
- * @param SET : 0 - SET command (from the writer) ; 1 - UA command (from the reader)
- * @return char* 
- */
-char* read_cmd(int fd, int set) {
+
+void read_cmd(int fd, int set) {
     int state = START_STATE;
     char curr_char;
-    char packet_A, packet_C;
     char* ret = malloc(sizeof(char)*2);
     
     while (state != STOP_STATE) {
         int res = read(fd, &curr_char, 1); // Read one character
         printf("read %x from state %d\n", curr_char, state);
 
-        switch (state)
-        {
-        case START_STATE:
-            if (curr_char == FLAG) {
-                state = FLAG_STATE;
-            }
-            else {
-                state = START_STATE;
-            }
-            break;
-        case FLAG_STATE:
-            packet_A = curr_char; // Receive the byte A, here
-            if (curr_char == A) {
-                state = A_STATE;
-            }
-            else if (curr_char == FLAG_STATE) {
-                state = FLAG_STATE;
-            }
-            else {
-                state = START_STATE;
-            }
-            break;
+        switch (state){
+            case START_STATE:
+                if (curr_char == FLAG) state = FLAG_STATE;
+                break;
+            case FLAG_STATE:
+                if (curr_char == A) state = A_STATE;
+                else if (curr_char == FLAG_STATE) state = FLAG_STATE;
+                else state = START_STATE;
+                break;
         case A_STATE:
-            packet_C = curr_char;// Receive the byte C, here
-            if (set == 1 && curr_char == C_SET) {
-                state = C_STATE;
-            }
-            else if (set == 0 && curr_char == C_UA) {
-                state = C_STATE;
-            }
-            else if (curr_char == FLAG) {
-                state = FLAG_STATE;
-            }
-            else {
-                state = START_STATE;
-            }
+            if ((set == 1 && curr_char == C_SET) || (set == 0 && curr_char == C_UA)) state = C_STATE;
+            else if (curr_char == FLAG) state = FLAG_STATE;
+            else state = START_STATE;
             break;
         case C_STATE:
-            if (set == 1 && curr_char == (A ^ C_SET)) {
-                state = BCC_STATE;
-            }
-            else if (curr_char == FLAG) {
-                state = FLAG_STATE;
-            }
-            else {
-                state = START_STATE;
-            }
+            if ((set == 1 && curr_char == (A ^ C_SET)) || (set == 0 && curr_char == (A ^ C_UA))) state = BCC_STATE;
+            else if (curr_char == FLAG) state = FLAG_STATE;
+            else state = START_STATE;
             break;
         case BCC_STATE:
-            if (curr_char == FLAG) {
-                // SUCCESS!
-                state = STOP_STATE;
-                ret[0] = packet_A;
-                ret[1] = packet_C;
-                return ret;
-            }
-            else {
-                state = START_STATE;
-            }
+            if (curr_char == FLAG) state = STOP_STATE;
+            else state = START_STATE;
             break;
         default:
             break;
         }
     }
-
-    return ret;
 }

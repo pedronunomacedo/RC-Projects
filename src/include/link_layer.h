@@ -4,6 +4,9 @@
 #ifndef _LINK_LAYER_H_
 #define _LINK_LAYER_H_
 
+#include "../include/state_constants.h"
+#include "../include/state.h"
+
 typedef enum
 {
     LlTx,
