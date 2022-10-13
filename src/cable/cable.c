@@ -65,7 +65,6 @@ void addNoiseToBuffer(unsigned char *buf, size_t errorIndex)
 int main(int argc, char *argv[])
 {
     printf("\n");
-
     system("socat -dd PTY,link=/dev/ttyS10,mode=777 PTY,link=/dev/emulatorTx,mode=777 &");
     sleep(1);
     printf("\n");

@@ -23,6 +23,8 @@ volatile int STOP = FALSE;
 unsigned char SET[5];
 unsigned char UA[5];
 unsigned char buf[BUF_SIZE];
+static int numTries = 0;
+int role;
 int fd; // serial file descriptor
 LinkLayer connectionParametersGlobal;
 
@@ -62,63 +64,63 @@ int sendUA(int fd) {
     return sentBytes;
 }
 
-void receiveUA(int fd, unsigned char SET[]) {
+void receiveARRAY(int fd, unsigned char SET[]) {
     int state = 0;
     unsigned char ch;
 
     while (state != 5) { // While it doesn't get to the end of the state machine
         read(fd, &ch, 1); // Read one char
         switch (ch) {
-        case 0: // Start node (waiting fot the FLAG)
-            if (ch == SET[0]) {
-                state = 1; // Go to the next state
-            } // else { stay in the same state }
-            break;
-        case 1: // State Flag RCV
-            if (ch == SET[1]) {
-                state = 2; // Go to the next state
+            case 0: // Start node (waiting fot the FLAG)
+                if (ch == SET[0]) {
+                    state = 1; // Go to the next state
+                } // else { stay in the same state }
+                break;
+            case 1: // State Flag RCV
+                if (ch == SET[1]) {
+                    state = 2; // Go to the next state
+                }
+                else if (ch == SET[0]) {
+                    state = 1; // Stays on the same state
+                }
+                else {
+                    state = 0; // other character received goes to the initial state
+                }
+                break;
+            case 2: // State A RCV
+                if (ch == SET[2]) {
+                    state = 3; // Go to the next state
+                }
+                else if (ch == SET[0]) {
+                    state = 1;
+                }
+                else {
+                    state = 0;
+                }
+                break;
+            case 3: // State C RCV
+                if (ch == SET[3]) {
+                    state = 4; // Go to the next state
+                }
+                else if (ch == SET[0]) {
+                    state = 1;
+                }
+                else {
+                    state = 0;
+                }
+                break;
+            case 4: // State BCC_OK
+                if (ch == SET[4]) {
+                    state = 5; // Go to the final state
+                    STOP = TRUE;
+                }
+                else {
+                    state = 0;
+                }
+                break;
+            default:
+                break;
             }
-            else if (ch == SET[0]) {
-                state = 1; // Stays on the same state
-            }
-            else {
-                state = 0; // other character received goes to the initial state
-            }
-            break;
-        case 2: // State A RCV
-            if (ch == SET[2]) {
-                state = 3; // Go to the next state
-            }
-            else if (ch == SET[0]) {
-                state = 1;
-            }
-            else {
-                state = 0;
-            }
-            break;
-        case 3: // State C RCV
-            if (ch == SET[3]) {
-                state = 4; // Go to the next state
-            }
-            else if (ch == SET[0]) {
-                state = 1;
-            }
-            else {
-                state = 0;
-            }
-            break;
-        case 4: // State BCC_OK
-            if (ch == SET[4]) {
-                state = 5; // Go to the final state
-                STOP = TRUE;
-            }
-            else {
-                state = 0;
-            }
-            break;
-        default:
-            break;
-        }
     }
 }
 
@@ -196,16 +198,37 @@ int llopen(LinkLayer connectionParameters)
 
     switch(connectionParameters.role) {
         case TRANSMITTER:
+            numTries = 0;
+            role = TRANSMITTER;
             setMachineRole(TRANSMITTER);
-            if (sendReadyToTransmitMsg(fd) < 0) {
-                printf("ERROR: Failed to send SET!\n");
-            }
+            do {
+                // Write SET
+                if (sendReadyToTransmitMsg(fd) < 0) {
+                    printf("ERROR: Failed to send SET!\n");
+                }
+
+                alarm(3);
+
+                // Read UA
+                role = RECEIVER;
+                setMachineRole(TRANSMITTER);
+                prepareUA();
+                receiveARRAY(fd, UA);
+            } while (numTries <= connectionParameters.nRetransmissions); // Falta o timeout
             break;
         case RECEIVER:
+            numTries = 0;
+            role = RECEIVER;
             setMachineRole(RECEIVER);
-            if (sendReadyToReceiveMsg(fd) < 0) {
-                printf("ERROR: Failed to send UA!\n");
-            }
+            prepareSet();
+
+            do {
+                receiveARRAY(fd, SET);
+                if (sendReadyToReceiveMsg(fd) < 0) {
+                    printf("ERROR: Failed to send UA!\n");
+                }
+            } while (numTries <= connectionParameters.nRetransmissions); // Falta o timeout
+
             break;
         default:
             printf("ERROR: Unknown role!\n");
@@ -220,9 +243,7 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    for(int i=0; i < bufSize; i++) {
-        if (write(connectionParametersGlobal.role, buf[i], 1) < 0) return -1;
-    }
+    if (write(connectionParametersGlobal.role, buf, bufSize) < 0) return -1;
     
     return 0;
 }
