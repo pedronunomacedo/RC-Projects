@@ -6,12 +6,22 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
     // Emissor
+    // printf("%s\n",role);
+    int resTx = strcmp(role,"tx");
+    // printf("%d\n",resTx);
+    int resRx = strcmp(role,"rx");
+    // printf("%d\n",resRx);
     LinkLayer defs;
     strcpy(defs.serialPort, serialPort);
-    if(strcmp(role,"0")){
-        defs.role = role[0]; // TRANSMITTER
-    } else if(strcmp(role,"1")) {
-        defs.role = role[1]; // RECEIVER
+    if(resTx == 0){
+        printf("entrei tx");
+        defs.role = LlTx; // TRANSMITTER
+    } else if(resRx == 0) {
+        printf("entrei rx");
+        defs.role = LlRx; // RECEIVER
+    }else {
+        printf("Invalid role");
+        return;
     }
     defs.baudRate = baudRate;
     defs.nRetransmissions = nTries;

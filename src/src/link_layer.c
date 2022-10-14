@@ -5,25 +5,27 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <termios.h>
 #include <stdlib.h>
+#include <signal.h>
+
 
 #define FALSE 0
 #define TRUE 1
 
 #define FLAG 0x7E
-#define A 0x03
+#define A_SET 0x03
+#define A_UA 0x01
 #define C_SET 0x03
 #define C_UA 0x07
 
 #define BUF_SIZE 256
 #define BAUDRATE B38400
 
-volatile int STOP = FALSE;
 unsigned char SET[5];
 unsigned char UA[5];
 unsigned char buf[BUF_SIZE];
-static int numTries = 0;
 int role;
 int fd; // serial file descriptor
 LinkLayer connectionParametersGlobal;
@@ -31,12 +33,23 @@ LinkLayer connectionParametersGlobal;
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
+int alarmEnabled = FALSE;
+int alarmCount = 0;
+
+// Alarm function handler
+void alarmHandler(int signal) {
+    alarmEnabled = TRUE;
+    alarmCount++;
+
+    printf("Alarm #%d\n", alarmCount);
+}
+
 
 void prepareSet() {
     SET[0] = FLAG;
-    SET[1] = A;
+    SET[1] = A_UA;
     SET[2] = C_SET;
-    SET[3] = A ^ C_SET;
+    SET[3] = A_UA ^ C_SET;
     SET[4] = FLAG;
 }
 
@@ -50,9 +63,9 @@ int sendSet(int fd) {
 
 void prepareUA() {
     UA[0] = FLAG;
-    UA[1] = A;
+    UA[1] = A_UA;
     UA[2] = C_UA;
-    UA[3] = A ^ C_UA;
+    UA[3] = A_UA ^ C_UA;
     UA[4] = FLAG;
 }
 
@@ -60,17 +73,29 @@ int sendUA(int fd) {
     int sentBytes = 0;
     sentBytes = write(fd, UA, BUF_SIZE);
     printf("Sent to writer [%x,%x,%x,%x,%x]\n", UA[0], UA[1], UA[2], UA[3], UA[4]);
-
     return sentBytes;
 }
 
+void receiveSET (int fd, unsigned char A, unsigned char C) {
+    enum state STATE = START;
+    char ch;
+    while (STATE != STOP) {
+        if (read(fd, &ch, 1) < 0) {
+            printf("ERROR: Couldn't read from the serial port!\n");
+            exit(1);
+        }
+        STATE = changeState(STATE, ch, A, C);
+    }
+}
+
+/*
 void receiveARRAY(int fd, unsigned char SET[]) {
     int state = 0;
     unsigned char ch;
 
     while (state != 5) { // While it doesn't get to the end of the state machine
         read(fd, &ch, 1); // Read one char
-        switch (ch) {
+        switch (state) {
             case 0: // Start node (waiting fot the FLAG)
                 if (ch == SET[0]) {
                     state = 1; // Go to the next state
@@ -112,7 +137,6 @@ void receiveARRAY(int fd, unsigned char SET[]) {
             case 4: // State BCC_OK
                 if (ch == SET[4]) {
                     state = 5; // Go to the final state
-                    STOP = TRUE;
                 }
                 else {
                     state = 0;
@@ -123,6 +147,7 @@ void receiveARRAY(int fd, unsigned char SET[]) {
             }
     }
 }
+*/
 
 int sendReadyToReceiveMsg(int fd) { // Send UA
     prepareUA();
@@ -136,7 +161,7 @@ int sendReadyToReceiveMsg(int fd) { // Send UA
 int sendReadyToTransmitMsg(int fd) { // send SET
     prepareSet();
     if (sendSet(fd) < 0) {
-        printf("ERROR: sendReadyToReceiveMsg failed!\n");
+        printf("ERROR: sendReadyToReceiveMs/* code */g failed!\n");
         return -1;
     }
     return 0;
@@ -147,6 +172,8 @@ int sendReadyToTransmitMsg(int fd) { // send SET
 ////////////////////////////////////////////////
 int llopen(LinkLayer connectionParameters)
 {
+    (void)signal(SIGALRM, alarmHandler);
+
     connectionParametersGlobal = connectionParameters;
     int fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
 
@@ -183,10 +210,7 @@ int llopen(LinkLayer connectionParameters)
     // Now clean the line and activate the settings for the port
     // tcflush() discards data written to the object referred to
     // by fd but not transmitted, or data received but not read,
-    // depending on the value of queue_selector:
-    //   TCIFLUSH - flushes data received but not read.
-    tcflush(fd, TCIOFLUSH);
-
+    // depending on the value of queue_sele/* code */
     // Set new port settings
     if (tcsetattr(fd, TCSANOW, &newtio) == -1)
     {
@@ -197,38 +221,39 @@ int llopen(LinkLayer connectionParameters)
     printf("New termios structure set\n");
 
     switch(connectionParameters.role) {
-        case TRANSMITTER:
-            numTries = 0;
-            role = TRANSMITTER;
-            setMachineRole(TRANSMITTER);
+        case LlTx:
+            alarmCount = 0;
+            printf("transmitter");
+            
             do {
-                // Write SET
-                if (sendReadyToTransmitMsg(fd) < 0) {
-                    printf("ERROR: Failed to send SET!\n");
+               // Write SET
+                if (alarmCount == 0 || alarmEnabled == TRUE) {
+                    if (sendReadyToTransmitMsg(fd) < 0) {
+                        printf("ERROR: Failed to send SET!\n");
+                    }
+                    alarmEnabled = FALSE;
                 }
-
+                
                 alarm(3);
 
                 // Read UA
-                role = RECEIVER;
-                setMachineRole(TRANSMITTER);
+                signal(SIGALRM, alarmHandler);
                 prepareUA();
-                receiveARRAY(fd, UA);
-            } while (numTries <= connectionParameters.nRetransmissions); // Falta o timeout
+                receiveSET(fd, A_UA, C_UA);
+
+            } while (alarmCount < connectionParameters.nRetransmissions);
+            
+            
             break;
-        case RECEIVER:
-            numTries = 0;
-            role = RECEIVER;
-            setMachineRole(RECEIVER);
-            prepareSet();
+        case LlRx:
+            printf("reader");
 
-            do {
-                receiveARRAY(fd, SET);
-                if (sendReadyToReceiveMsg(fd) < 0) {
-                    printf("ERROR: Failed to send UA!\n");
-                }
-            } while (numTries <= connectionParameters.nRetransmissions); // Falta o timeout
+            receiveSET(fd, A_SET, C_SET);
 
+            if (sendReadyToReceiveMsg(fd) < 0) {
+                printf("ERROR: Failed to send UA!\n");
+            }
+            
             break;
         default:
             printf("ERROR: Unknown role!\n");
