@@ -5,8 +5,9 @@
 typedef struct {
     int role;
 } stateMachineInfo;
+
 enum state {START, FLAG_RCV, A_RCV, C_RCV, BCC_OK, STOP};
-enum state changeState(enum state STATE, char ch, unsigned char A, unsigned char C);
+enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsigned char C);
 void setMachineRole(int role);
 
 

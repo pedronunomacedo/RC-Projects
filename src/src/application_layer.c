@@ -14,13 +14,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     LinkLayer defs;
     strcpy(defs.serialPort, serialPort);
     if(resTx == 0){
-        printf("entrei tx");
         defs.role = LlTx; // TRANSMITTER
     } else if(resRx == 0) {
-        printf("entrei rx");
         defs.role = LlRx; // RECEIVER
-    }else {
-        printf("Invalid role");
+    } else {
+        printf("ERROR: Invalid role!\n");
         return;
     }
     defs.baudRate = baudRate;
@@ -29,7 +27,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
     // Open the connection between the 2 devices and prepare to send and receive
     if (llopen(defs) < 0) {
-        printf("ERROR: Couldn't open serial port - fd incorrect!\n");
+        printf("ERROR: Couldn't receive UA from receiver!\n");
         return;
     }
 

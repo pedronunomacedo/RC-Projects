@@ -16,7 +16,7 @@
 
 #define FLAG 0x7E
 #define A_SET 0x03
-#define A_UA 0x01
+#define A_UA 0x03
 #define C_SET 0x03
 #define C_UA 0x07
 
@@ -38,7 +38,7 @@ int alarmCount = 0;
 
 // Alarm function handler
 void alarmHandler(int signal) {
-    alarmEnabled = TRUE;
+    alarmEnabled = FALSE;
     alarmCount++;
 
     printf("Alarm #%d\n", alarmCount);
@@ -55,36 +55,105 @@ void prepareSet() {
 
 int sendSet(int fd) {
     int sentBytes = 0;
-    sentBytes = write(fd, SET, BUF_SIZE);
-    printf("Sent to reader [%x,%x,%x,%x,%x]\n", SET[0], SET[1], SET[2], SET[3], SET[4]);
-
+    sentBytes = write(fd, SET, 5);
+    printf("Sent SET to reader [%x,%x,%x,%x,%x]\n", SET[0], SET[1], SET[2], SET[3], SET[4]);
+    
     return sentBytes;
 }
 
 void prepareUA() {
     UA[0] = FLAG;
     UA[1] = A_UA;
-    UA[2] = C_UA;
+    UA[2] = 22;
     UA[3] = A_UA ^ C_UA;
     UA[4] = FLAG;
 }
 
 int sendUA(int fd) {
     int sentBytes = 0;
-    sentBytes = write(fd, UA, BUF_SIZE);
-    printf("Sent to writer [%x,%x,%x,%x,%x]\n", UA[0], UA[1], UA[2], UA[3], UA[4]);
+    sentBytes = write(fd, UA, 5);
+    printf("Sent UA to writer [%x,%x,%x,%x,%x]\n", UA[0], UA[1], UA[2], UA[3], UA[4]);
     return sentBytes;
 }
 
+enum state receiveUA (int fd, unsigned char A, unsigned char C) {
+    alarmEnabled = TRUE; // ???????????????????????????
+    enum state STATE = START;
+    char buf;
+    // printf("alarmEnabled: %d, state : %d\n", alarmEnabled, STATE);
+    while (STATE != STOP && alarmEnabled == TRUE) {
+        int bytes = read(fd, &buf, 1);
+
+        if (bytes > 0) {
+            STATE = changeState(STATE, buf, A, C);
+            if (STATE == STOP) alarmEnabled = FALSE;
+        }
+
+        // Only to debug! ///////////////////////////////////////////////
+        switch (STATE) {
+            case START:
+                printf("Received state START!\n");
+                break;
+            case FLAG_RCV:
+                printf("Received state FLAG_RCV!\n");
+                break;
+            case A_RCV:
+                printf("Received state A_RCV!\n");
+                break;
+            case C_RCV:
+                printf("Received state C_RCV!\n");
+                break;
+            case BCC_OK:
+                printf("Received state BCC_OK!\n");
+                break;
+            default:
+                printf("Received enter default!\n");
+                break;
+        }
+        printf("alarmEnabled = %d\n", alarmEnabled);
+        ////////////////////////////////////////////////////////////////
+    }
+
+    return STATE;
+}
+
+
 void receiveSET (int fd, unsigned char A, unsigned char C) {
     enum state STATE = START;
-    char ch;
+    unsigned char buf;
+    // printf("alarmEnabled: %d, state : %d\n", alarmEnabled, STATE);
+    
     while (STATE != STOP) {
-        if (read(fd, &ch, 1) < 0) {
-            printf("ERROR: Couldn't read from the serial port!\n");
-            exit(1);
+        int bytes = read(fd, &buf, 1);
+        printf("buf = %c", buf);
+
+        if (bytes > 0) {
+            STATE = changeState(STATE, buf, A, C);
         }
-        STATE = changeState(STATE, ch, A, C);
+
+        // Only to debug! ///////////////////////////////////////////////
+        switch (STATE) {
+            case START:
+                printf("Received state START!\n");
+                break;
+            case FLAG_RCV:
+                printf("Received state FLAG_RCV!\n");
+                break;
+            case A_RCV:
+                printf("Received state A_RCV!\n");
+                break;
+            case C_RCV:
+                printf("Received state C_RCV!\n");
+                break;
+            case BCC_OK:
+                printf("Received state BCC_OK!\n");
+                break;
+            default:
+                printf("Received enter default!\n");
+                break;
+        }
+        printf("alarmEnabled = %d\n", alarmEnabled);
+        ////////////////////////////////////////////////////////////////
     }
 }
 
@@ -161,7 +230,7 @@ int sendReadyToReceiveMsg(int fd) { // Send UA
 int sendReadyToTransmitMsg(int fd) { // send SET
     prepareSet();
     if (sendSet(fd) < 0) {
-        printf("ERROR: sendReadyToReceiveMs/* code */g failed!\n");
+        printf("ERROR: sendReadyToReceiveMsg failed!\n");
         return -1;
     }
     return 0;
@@ -201,7 +270,7 @@ int llopen(LinkLayer connectionParameters)
 
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
-    newtio.c_cc[VTIME] = 1; // Inter-character timer unused
+    newtio.c_cc[VTIME] = 0; // Inter-character timer unused
     newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
@@ -222,38 +291,39 @@ int llopen(LinkLayer connectionParameters)
 
     switch(connectionParameters.role) {
         case LlTx:
+            printf("Enter the TRANSMITTER!\n");
             alarmCount = 0;
-            printf("transmitter");
-            
+
             do {
-               // Write SET
-                if (alarmCount == 0 || alarmEnabled == TRUE) {
-                    if (sendReadyToTransmitMsg(fd) < 0) {
-                        printf("ERROR: Failed to send SET!\n");
+                alarm(connectionParameters.timeout);
+                enum state STATE;
+                do {
+                    if (alarmCount == 0 || alarmEnabled == TRUE) {
+                        if (sendReadyToTransmitMsg(fd) < 0) {
+                            printf("ERROR: Failed to send SET!\n");
+                            continue;
+                        }
                     }
-                    alarmEnabled = FALSE;
-                }
-                
-                alarm(3);
-
-                // Read UA
-                signal(SIGALRM, alarmHandler);
-                prepareUA();
-                receiveSET(fd, A_UA, C_UA);
-
+                    // Read UA
+                    prepareUA();
+                    STATE = receiveUA(fd, A_UA, C_UA);
+                } while (alarmEnabled == TRUE);
+                printf("alarmCount = %d\n", alarmCount);
+                if (STATE == STOP) break;
             } while (alarmCount < connectionParameters.nRetransmissions);
-            
-            
+
+            if (alarmCount < connectionParameters.nRetransmissions) printf("Received UA from receiver successfully!\n");
+            else {
+                return -1;
+            }
             break;
         case LlRx:
-            printf("reader");
-
-            receiveSET(fd, A_SET, C_SET);
+            printf("Enter the RECEIVER!\n");
+            receiveSET(fd, A_SET, C_SET); // prepare UA
 
             if (sendReadyToReceiveMsg(fd) < 0) {
                 printf("ERROR: Failed to send UA!\n");
             }
-            
             break;
         default:
             printf("ERROR: Unknown role!\n");

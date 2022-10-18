@@ -39,7 +39,7 @@ int main(int argc, char *argv[])
            N_TRIES,
            TIMEOUT,
            filename);
-    printf("%s\n",role);
+
     applicationLayer(serialPort, role, BAUDRATE, N_TRIES, TIMEOUT, filename);
     //nLayer(serialPort, role, BAUDRATE, N_TRIES, TIMEOUT, filename);
 
