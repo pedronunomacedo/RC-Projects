@@ -64,7 +64,7 @@ int sendSet(int fd) {
 void prepareUA() {
     UA[0] = FLAG;
     UA[1] = A_UA;
-    UA[2] = 22;
+    UA[2] = C_UA;
     UA[3] = A_UA ^ C_UA;
     UA[4] = FLAG;
 }
