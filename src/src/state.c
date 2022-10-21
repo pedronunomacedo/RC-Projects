@@ -12,8 +12,15 @@ stateMachineInfo stateMachine;
 #define C_SET 0x03
 #define C_UA 0x07
 
+#define C_S0 0x00 // transmitter -> receiver
+#define C_S1 0x40 // receiver -> transmitter
+#define RR0 0x05
+#define RR1 0x85
+#define REJ0 0x01
+#define REJ1 0x81
+
 enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsigned char C) {
-    printf("enter changeState()!\n");
+    // printf("enter changeState()!\n");
     switch (STATE) {
         case START: // Start node (waiting fot the FLAG)
             printf("STATE = START\n");
@@ -99,4 +106,172 @@ enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsi
     ////////////////////////////////////////////////////////////////
 
     return STATE;
+}
+
+
+enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned char ch, char currentC, unsigned char *buf, int *currentPos, int *foundBCC1) {
+    switch (STATE) {
+        case packSTART:
+            printf("STATE = packSTART\n");
+            if (ch == FLAG) {
+                printf("Received the FLAG1!\n");
+                STATE = packFLAG1_RCV;
+            } // else { stay in the same state }
+            break;
+        case packFLAG1_RCV:
+            printf("STATE = packFLAG_RCV\n");
+            if (ch == A_SET) {
+                STATE = packA_RCV;
+            }
+            else if (ch == FLAG) {
+                STATE = packFLAG1_RCV;
+            }
+            else {
+                STATE = packSTART; // other character received goes to the initial state
+            }
+            break;
+        case packA_RCV:
+            printf("STATE = packA_RCV\n");
+            if (ch == currentC) {
+                STATE = packC_RCV;
+            }
+            else if (ch == FLAG) {
+                STATE = packFLAG1_RCV;
+            }
+            else {
+                STATE = packSTART;
+            }
+            break;
+        case packC_RCV:
+            printf("STATE = packC_RCV\n");
+            printf("currentC = %02x\n", currentC);
+            printf("A_SET ^ currentC = %02x\n", (A_SET ^ currentC));
+            char expectedBCC1 = (A_SET ^ currentC);
+            if (ch == expectedBCC1) {
+                *foundBCC1 = 1;
+                STATE = packBCC1_RCV;
+                currentPos = 0;
+            }
+            else if (ch == FLAG) {
+                STATE = packFLAG1_RCV;
+            }
+            else {
+                STATE = packSTART;
+            }
+            break;
+        case packBCC1_RCV:
+            printf("STATE = packBCC1_RCV\n");
+            if (ch == 0x7E) {
+                STATE = packTRANSPARENCY_RCV;
+            }
+            else if (ch == FLAG) {
+                STATE = packSTOP;
+            }
+            else {
+                buf[(*currentPos)++] = ch;
+                printf("currentPos (else packBCC1_RCV) = %d\n", *currentPos);
+                STATE = packBCC1_RCV;
+            }
+            break;
+        case packTRANSPARENCY_RCV:
+            printf("STATE = packDATA_RCV\n");
+            if (ch == 0x5E) {
+                STATE = packBCC1_RCV;
+                printf("currentPos (if (0x5E) - packTRANSPARENCY_RC) = %d\n", *currentPos);
+                buf[(*currentPos)++] = FLAG;
+            }
+            else if (ch == 0x5D) {
+                STATE = packBCC1_RCV;
+                printf("currentPos (if (0x5D) - packTRANSPARENCY_RC) = %d\n", *currentPos);
+                buf[(*currentPos)++] = 0x7D; // octeto
+            }
+            else {
+                STATE = packBCC1_RCV;
+            }
+            break;
+        default:
+            printf("default\n");
+            break;
+    }
+
+    return STATE;
+}
+
+
+unsigned char superviseTrama[2] = {0};
+
+int changeStateSuperviseTrama(unsigned char buf, enum state *STATE) {
+    switch ((*STATE)) {
+        case START: // Start node (waiting fot the FLAG)
+            printf("STATE = START\n");
+            if (buf == FLAG) {
+                printf("Received the FLAG!\n");
+
+                STATE = FLAG_RCV; // Go to the next state
+            } // else { stay in the same state }
+            break;
+        case FLAG_RCV: // State Flag RCV
+            printf("STATE = FLAG_RCV\n");
+            if (buf == A_SET) {
+                STATE = A_RCV; // Go to the next state
+                superviseTrama[0] = buf;
+            }
+            else if (buf == FLAG) {
+                STATE = FLAG_RCV; // Stays on the same state
+            }
+            else {
+                STATE = START; // other character received goes to the initial state
+            }
+            break;
+        case A_RCV: // State A RCV
+            printf("STATE = A_RCV\n");
+            if (buf == RR1) {
+                STATE = C_RCV; // Go to the next state
+                superviseTrama[1] = buf;
+            }
+            else if (buf == FLAG) {
+                STATE = FLAG_RCV;
+            }
+            else {
+                STATE = START;
+            }
+            break;
+        case C_RCV: // State C RCV
+            printf("STATE = C_RCV\n");
+            if (buf == (superviseTrama[0] ^ superviseTrama[1])) {
+                STATE = BCC_OK; // Go to the next state
+            }
+            else if (buf == FLAG) {
+                STATE = FLAG_RCV;
+            }
+            else {
+                STATE = START;
+            }
+            break;
+        case BCC_OK: // State BCC_OK
+            printf("STATE = BCC_OK\n");
+            if (buf == FLAG) {
+                STATE = START; // Go to the final state
+                switch (superviseTrama[1]) {
+                    case RR0:
+                        return 1;
+                    case RR1:
+                        return 2;
+                    case REJ0:
+                        return 3;
+                    case REJ1:
+                        return 4;
+                }
+                printf("STOP\n");
+            }
+            else {
+                STATE = START;
+            }
+            break;
+        default:
+            printf("default\n");
+            break;
+    }
+
+    return 0;
 }
