@@ -116,11 +116,13 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         int controlPacketSize = prepareControlPacket(controlPacket, BUF_SIZE, 2, fileSize, filename);
 
         // Print control packet
+        /*
         printf("--------- CONTROL PACKET ----------\n");
         for (int i = 0; i < controlPacketSize; i++) {
             printf("controlPacket[%d]: %02x\n", i, controlPacket[i]);
         }
-        
+        */
+       
         if (llwrite(controlPacket, controlPacketSize) != 0) {
             printf("ERROR: llwrite() failed!\n");
             return;

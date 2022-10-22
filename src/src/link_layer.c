@@ -58,11 +58,25 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 
 // Alarm function handler
-void alarmHandler(int signal) {
+void alarmHandler(int signal)
+{
     alarmEnabled = FALSE;
     alarmCount++;
 
-    printf("Alarm #%d\n", alarmCount);
+    printf("\nAlarm #%d\n", alarmCount);
+}
+
+//Starts the alarm
+int startAlarm(int timeout){
+    // Set alarm function handler
+    (void)signal(SIGALRM, alarmHandler);
+
+    if (alarmEnabled == FALSE)
+    {
+        alarm(timeout);
+        alarmEnabled = TRUE;
+    }
+    return 0;
 }
 
 
@@ -111,6 +125,7 @@ enum state receiveUA (int fd, unsigned char A, unsigned char C) {
         }
 
         // Only to debug! ///////////////////////////////////////////////
+        /*
         switch (STATE) {
             case START:
                 printf("Received state START!\n");
@@ -131,8 +146,9 @@ enum state receiveUA (int fd, unsigned char A, unsigned char C) {
                 printf("Received enter default!\n");
                 break;
         }
-        printf("alarmEnabled = %d\n", alarmEnabled);
+        */
         ////////////////////////////////////////////////////////////////
+        printf("alarmEnabled = %d\n", alarmEnabled);
     }
 
     return STATE;
@@ -153,6 +169,7 @@ void receiveSET (int fd, unsigned char A, unsigned char C) {
         }
 
         // Only to debug! ///////////////////////////////////////////////
+        /*
         switch (STATE) {
             case START:
                 printf("Received state START!\n");
@@ -173,71 +190,11 @@ void receiveSET (int fd, unsigned char A, unsigned char C) {
                 printf("Received enter default!\n");
                 break;
         }
-        printf("alarmEnabled = %d\n", alarmEnabled);
+        */
         ////////////////////////////////////////////////////////////////
+        printf("alarmEnabled = %d\n", alarmEnabled);
     }
 }
-
-/*
-void receiveARRAY(int fd, unsigned char SET[]) {
-    int state = 0;
-    unsigned char ch;
-
-    while (state != 5) { // While it doesn't get to the end of the state machine
-        read(fd, &ch, 1); // Read one char
-        switch (state) {
-            case 0: // Start node (waiting fot the FLAG)
-                if (ch == SET[0]) {
-                    state = 1; // Go to the next state
-                } // else { stay in the same state }
-                break;
-            case 1: // State Flag RCV
-                if (ch == SET[1]) {
-                    state = 2; // Go to the next state
-                }
-                else if (ch == SET[0]) {
-                    state = 1; // Stays on the same state
-                }
-                else {
-                    state = 0; // other character received goes to the initial state
-                }
-                break;
-            case 2: // State A RCV
-                if (ch == SET[2]) {
-                    state = 3; // Go to the next state
-                }
-                else if (ch == SET[0]) {
-                    state = 1;
-                }
-                else {
-                    state = 0;
-                }
-                break;
-            case 3: // State C RCV
-                if (ch == SET[3]) {
-                    state = 4; // Go to the next state
-                }
-                else if (ch == SET[0]) {
-                    state = 1;
-                }
-                else {
-                    state = 0;
-                }
-                break;
-            case 4: // State BCC_OK
-                if (ch == SET[4]) {
-                    state = 5; // Go to the final state
-                }
-                else {
-                    state = 0;
-                }
-                break;
-            default:
-                break;
-            }
-    }
-}
-*/
 
 int sendReadyToReceiveMsg(int fd) { // Send UA
     prepareUA();
@@ -306,7 +263,7 @@ int llopen(LinkLayer connectionParameters)
     // Set input mode (non-canonical, no echo,...)
     newtio.c_lflag = 0;
     newtio.c_cc[VTIME] = 0; // Inter-character timer unused
-    newtio.c_cc[VMIN] = 0;  // Blocking read until 5 chars received
+    newtio.c_cc[VMIN] = 1;  // Blocking read until 1 chars received
 
     // VTIME e VMIN should be changed in order to protect with a
     // timeout the reception of the following character(s)
@@ -326,7 +283,6 @@ int llopen(LinkLayer connectionParameters)
 
     switch(connectionParameters.role) {
         case LlTx:
-            printf("Enter the TRANSMITTER!\n");
             alarmCount = 0;
 
             do {
@@ -353,7 +309,6 @@ int llopen(LinkLayer connectionParameters)
             }
             break;
         case LlRx:
-            printf("Enter the RECEIVER!\n");
             receiveSET(fd, A_SET, C_SET); // prepare UA
 
             if (sendReadyToReceiveMsg(fd) < 0) {
@@ -400,39 +355,50 @@ int stuffing (unsigned char *frame, char byte, int i, int countStuffings) {
  * @return int 
  */
 
-int prepareInfoFrame(const unsigned char *buf, int bufSize, char C, unsigned char *infoFrame) {
+int prepareInfoFrame(unsigned char *buf, int bufSize, char C, unsigned char *infoFrame) {
     infoFrame[0] = FLAG;
     infoFrame[1] = A_SET;
     infoFrame[2] = C; // Changes between C_S0 AND C_S1
     infoFrame[3] = A_SET ^ C;
 
     // Store data
-    infoFrame[4] = buf[0]; // (buf[0] == 2) -> START controlPacket | (buf[0] == 3) -> END controlPacket
-    char bcc2 = buf[0]; // Vaiable to store the XOR while going through the data
-    
-    int countStuffings = 0;
-    for (int i = 1; i < bufSize; i++) {
-        countStuffings += stuffing(infoFrame, buf[i], i, countStuffings);
-        printf("countStuffings[%d] = %d\n", i, countStuffings);
+    char bcc2 = 0x00; // Vaiable to store the XOR while going through the data
+    for (int i = 0; i < bufSize; i++) {
         bcc2 ^= buf[i];
     }
-    // Byte stuffing of the BCC2 before storing it in the array
-    stuffing(infoFrame, bcc2, bufSize, countStuffings);
-    printf("countStuffings = %d\n", countStuffings);
 
-    infoFrame[13] = FLAG; // TEST_INFO_FRAME
-
-    int totalBytes = 5 + bufSize + countStuffings; // FLAG | A | C | BCC1 | D1 ... Dn (bufSize) | BCC2 | FLAG
-
-    infoFrame[totalBytes++] = FLAG; // Determines the end of the array
-
-    printf("\n\n\n\n\n\n\n\n\n\n\n ---- Information Frame (prepareInfoFrame - after stuffing) ---- \n\n");
-    for (int i = 0; i < totalBytes; i++) {
-        printf("infoFrame[%d] = %02x\n", i, infoFrame[i]);
+    // Byte stuffing of the data (buf)
+    int index = 4;
+    for(int i = 0; i < bufSize; i++) {
+        if (buf[i] == 0x7E) {
+            infoFrame[index++] = 0x7D;
+            infoFrame[index++] = 0x5E;
+        }
+        else if (buf[i] == 0x7D) {
+            infoFrame[index++] = 0x7D;
+            infoFrame[index++] = 0x5D;
+        }
+        else {
+            infoFrame[index++] = buf[i];
+        }
     }
-    printf("\n\n\n\n\n\n\n\n\n\n\n");
 
-    return totalBytes;
+    // Byte stuffing of the BCC2 before storing it in the array
+    if (bcc2 == 0x7E) {
+        infoFrame[index++] = 0x7D;
+        infoFrame[index++] = 0x5E;
+    }
+    else if (bcc2 == 0x7D) {
+        infoFrame[index++] = 0x7D;
+        infoFrame[index++] = 0x5D;
+    }
+    else {
+        infoFrame[index++] = bcc2;
+    }
+
+    infoFrame[index++] = FLAG; // Determines the end of the array
+
+    return index;
 }
 
 
@@ -463,7 +429,7 @@ int sendInfoFrame(unsigned char *infoFrame, int totalBytes) {
     do {
         enum state STATE;
         if (alarmEnabled == FALSE) {
-            alarm(timeout);
+            startAlarm(timeout);
             printf("totalBytes (link_layer : 425) = %d\n", totalBytes);
             int res = write(fd, infoFrame, totalBytes);
             printf("res (link_layer : 427) = %d\n", res);
@@ -549,7 +515,7 @@ int receiveInfoFrame(unsigned char *packet, unsigned char *buf) {
             continue;
         }
 
-        printf("ch (link_layer : 504) = %02x\n", ch);
+        printf("ch (link_layer : 509) = %02x\n", ch);
         STATE = changeInfoPacketState(STATE, ch, currentC, buf, &currentPos, &foundBCC1);
         printf("CURRENT_STATE = %d\n", STATE);
         printf("currentPos = %d\n", currentPos);
