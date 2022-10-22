@@ -47,6 +47,8 @@ unsigned char SET[5];
 unsigned char UA[5];
 unsigned char buf[BUF_SIZE];
 char currentC = C_S1;
+int receiverNumber = 1, senderNumber = 0;
+int controlReceiver;
 
 int fd; // serial file descriptor
 LinkLayer connectionParametersGlobal;
@@ -58,8 +60,7 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 
 // Alarm function handler
-void alarmHandler(int signal)
-{
+void alarmHandler(int signal) {
     alarmEnabled = FALSE;
     alarmCount++;
 
@@ -402,24 +403,22 @@ int prepareInfoFrame(unsigned char *buf, int bufSize, char C, unsigned char *inf
 }
 
 
-int readReceiverResponse(enum state *STATE2) {
-    unsigned char buf;
-    // printf("alarmEnabled: %d, state : %d\n", alarmEnabled, STATE);
-    while (*STATE2 != STOP && alarmEnabled == TRUE) {
-        int bytes = read(fd, &buf, 1);
+int readReceiverResponse() {
+    unsigned char buf[5] = {0};
+    
+    int readedBytes = read(fd, buf, 5);
 
-        if (bytes > 0) {
-            int res = changeStateSuperviseTrama(buf, STATE2);
-            if (res == 0) continue;
-            else if (res == 1 && currentC == C_S0) return 1;
-            else if (res == 2 && currentC == C_S1) return 1;
-            else if (res == 3 && currentC == C_S0) return -1;
-            else if (res == 4 && currentC == C_S1) return -1;
-            else return 0;
+    if (readedBytes != -1 && buf != 0) {
+        if (buf[2] != controlReceiver || (buf[3] != (buf[1] ^ buf[2]))) {
+            printf("\nERROR: RR incorrect!\n");
+            alarmEnabled = FALSE;
+        }
+        else {
+            printf("\n RR recived successfully");
+            alarmEnabled =  FALSE;
+            return 1; // SUCCESS
         }
     }
-
-    return *STATE2;
 }
 
 int sendInfoFrame(unsigned char *infoFrame, int totalBytes) {
@@ -429,22 +428,17 @@ int sendInfoFrame(unsigned char *infoFrame, int totalBytes) {
     do {
         enum state STATE;
         if (alarmEnabled == FALSE) {
-            startAlarm(timeout);
-            printf("totalBytes (link_layer : 425) = %d\n", totalBytes);
             int res = write(fd, infoFrame, totalBytes);
-            printf("res (link_layer : 427) = %d\n", res);
             if (res < 0) {
                 printf("ERROR: Failed to send infoFrame!\n");
                 continue;
             }
+            startAlarm(timeout);
         }
 
         // Read receiverResponse
-        enum state STATE2 = START;
-        int res = readReceiverResponse(&STATE2);
+        int res = readReceiverResponse();
         switch (res) {
-            case 0:
-                break;
             case -1:
                 alarmEnabled = FALSE;
                 break;
@@ -456,6 +450,16 @@ int sendInfoFrame(unsigned char *infoFrame, int totalBytes) {
         printf("alarmCount = %d\n", alarmCount);
         if (STATE == STOP) break;
     } while (alarmCount < nRetransmissions);
+
+    if (senderNumber == 1) {
+        senderNumber = 0;
+    }
+    else if (senderNumber == 0) {
+        senderNumber = 1;
+    }
+    else {
+        printf("ERROR (link_layer.c - sendInfoFrame): Invalid senderNumber!\n");
+    }
 
     return -1;
 }
@@ -472,19 +476,13 @@ int sendInfoFrame(unsigned char *infoFrame, int totalBytes) {
  * @return int 
  */
 int llwrite(const unsigned char *buf, int bufSize) {
-    // 1. Create the info frame
-    // 2. Make byte stuffing of the data received (controlPacket - buf)
-
+    // 1. Create the info frame -> DONE
+    // 2. Make byte stuffing of the data received (controlPacket - buf) -> DONE
+    controlReceiver = (receiverNumber << 7) | 0x05;
+    
     unsigned char *infoFrame = malloc(sizeof(unsigned char) * (4 + (bufSize * 2) + 2));
 
     int totalBytes = prepareInfoFrame(buf, bufSize, currentC, infoFrame);
-
-    printf("\n\n\n\n\n\n\n\n\n\n\n ---- Information Frame (llwrite) ---- \n\n");
-    printf("totalBytes = %d\n", totalBytes);
-    for (int i = 0; i < totalBytes; i++) {
-        printf("infoFrame[%d] = %02x\n", i, infoFrame[i]);
-    }
-    printf("\n\n\n\n\n\n\n\n\n\n\n");
 
     if (sendInfoFrame(infoFrame, totalBytes) < 0) {
         printf("ERROR: Failed to write info frame!\n");
