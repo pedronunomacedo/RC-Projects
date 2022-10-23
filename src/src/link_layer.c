@@ -92,6 +92,8 @@ void prepareSet() {
 int sendSet(int fd) {
     int sentBytes = 0;
     sentBytes = write(fd, SET, 5);
+
+    printf("Sent SET to receiver!\n");
     
     return sentBytes;
 }
@@ -107,6 +109,9 @@ void prepareUA() {
 int sendUA(int fd) {
     int sentBytes = 0;
     sentBytes = write(fd, UA, 5);
+
+    printf("Sent UA for transmitter!\n");
+
     return sentBytes;
 }
 
@@ -274,8 +279,6 @@ int llopen(LinkLayer connectionParameters)
         exit(-1);
     }
 
-    printf("New termios structure set\n");
-
     switch(connectionParameters.role) {
         case LlTx:
             alarmCount = 0;
@@ -294,7 +297,7 @@ int llopen(LinkLayer connectionParameters)
                     prepareUA();
                     STATE = receiveUA(fd, A_UA, C_UA);
                 } while (alarmEnabled == TRUE);
-                printf("alarmCount = %d\n", alarmCount);
+                printf(":alarmCount (%d)\n", alarmCount);
                 if (STATE == STOP) break;
             } while (alarmCount < connectionParameters.nRetransmissions);
 
@@ -305,6 +308,7 @@ int llopen(LinkLayer connectionParameters)
             break;
         case LlRx:
             receiveSET(fd, A_SET, C_SET); // prepare UA
+            printf("Received SET from transmitter successfully!\n");
 
             if (sendReadyToReceiveMsg(fd) < 0) {
                 printf("ERROR: Failed to send UA!\n");
@@ -344,11 +348,11 @@ int stuffing (unsigned char *frame, char byte, int i, int countStuffings) {
  * @return int 
  */
 
-int prepareInfoFrame(unsigned char *buf, int bufSize, char C, unsigned char *infoFrame) {
+int prepareInfoFrame(unsigned char *buf, int bufSize, unsigned char *infoFrame) {
     infoFrame[0] = FLAG;
     infoFrame[1] = A_SET;
-    infoFrame[2] = C; // Changes between C_S0 AND C_S1
-    infoFrame[3] = A_SET ^ C;
+    infoFrame[2] = (senderNumber << 6); // Changes between C_S0 AND C_S1
+    infoFrame[3] = A_SET ^ (senderNumber << 6);
 
     // Store data
     char bcc2 = 0x00; // Vaiable to store the XOR while going through the data
@@ -396,18 +400,21 @@ int readReceiverResponse() {
     
     int readedBytes = read(fd, buf, 5);
 
-    for (int i = 0; i < 5; i++) {
-        printf("buf[%d] = %02x\n", i, buf[i]);
-    }
-
+    int verifyReceiver = 0x05 || ((!senderNumber) << 7);
     if (readedBytes != -1 && buf != 0) {
-        if (buf[2] != controlReceiver || (buf[3] != (buf[1] ^ buf[2]))) {
+        if ((buf[2] != verifyReceiver) && (buf[3] != (buf[1] ^ buf[2]))) {
             printf("\nERROR: RR incorrect!\n");
             alarmEnabled = FALSE;
         }
         else {
-            printf("\n RR received successfully");
+            printf("\nRR received successfully!\n");
             alarmEnabled =  FALSE;
+
+            if (senderNumber == 1) senderNumber = 0;
+            else {
+                senderNumber = 1;
+            }
+
             return 1; // SUCCESS
         }
     }
@@ -422,7 +429,7 @@ int sendInfoFrame(unsigned char *infoFrame, int totalBytes) {
         if (alarmEnabled == FALSE) {
             int res = write(fd, infoFrame, totalBytes);
             if (res < 0) {
-                printf("ERROR: Failed to send infoFrame!\n");
+                printf("ERROR: Failed to send information frame to llread()!\n");
                 continue;
             }
             startAlarm(timeout);
@@ -435,23 +442,13 @@ int sendInfoFrame(unsigned char *infoFrame, int totalBytes) {
                 alarmEnabled = FALSE;
                 break;
             case 1:
-                printf("Received infoFrame from llwrite() successfully!\n");
+                STATE = STOP;
+                printf("Received the response from llread() successfully!\n");
                 return 0;
                 
         }
-        printf("alarmCount = %d\n", alarmCount);
-        if (STATE == STOP) break;
+        if (STATE == STOP) break;  
     } while (alarmCount < nRetransmissions);
-
-    if (senderNumber == 1) {
-        senderNumber = 0;
-    }
-    else if (senderNumber == 0) {
-        senderNumber = 1;
-    }
-    else {
-        printf("ERROR (link_layer.c - sendInfoFrame): Invalid senderNumber!\n");
-    }
 
     return -1;
 }
@@ -474,25 +471,37 @@ int llwrite(const unsigned char *buf, int bufSize) {
     
     unsigned char *infoFrame = malloc(sizeof(unsigned char) * (4 + (bufSize * 2) + 2));
 
-    int totalBytes = prepareInfoFrame(buf, bufSize, currentC, infoFrame);
+    int totalBytes = prepareInfoFrame(buf, bufSize, infoFrame);
 
     int STOP = FALSE;
-    while (STOP == FALSE) {
+
+    do {
+        enum state STATE;
         if (alarmEnabled == FALSE) {
-            if (sendInfoFrame(infoFrame, totalBytes) < 0) {
-                printf("ERROR: Failed to write info frame!\n");
-                return -1;
+            int res = write(fd, infoFrame, totalBytes);
+            if (res < 0) {
+                printf("ERROR: Failed to send infoFrame!\n");
+                continue;
             }
+            printf("Sent information frame successfully!\n");
             startAlarm(timeout);
         }
 
-        int result = readReceiverResponse();
-
-        if (result == 1) {
-
+        // Read receiverResponse
+        int res = readReceiverResponse();
+        switch (res) {
+            case -1:
+                alarmEnabled = FALSE;
+                break;
+            case 1:
+                STATE = STOP;
+                printf("Received response from llread() successfully!\n");
+                return 0;
+                
         }
-    }
-
+        if (STATE == STOP) break;
+        printf("alarmCount = %d\n", alarmCount);    
+    } while (alarmCount < nRetransmissions);
 
     
     
@@ -517,11 +526,13 @@ int receiveInfoFrame(unsigned char *packet, unsigned char *buf) {
             continue;
         }
 
-        STATE = changeInfoPacketState(STATE, ch, currentC, buf, &currentPos, &foundBCC1);
+
+        STATE = changeInfoPacketState(STATE, ch, senderNumber, buf, &currentPos, &foundBCC1);
 
 
         switch (STATE) {
             case packSTOP:
+                printf("Received Information frame from llwrite() successfully!\n");
                 break;
             case packBCC1_RCV:
                 if (foundBCC1 == 1) {
@@ -538,27 +549,21 @@ int receiveInfoFrame(unsigned char *packet, unsigned char *buf) {
         }
     }
 
-    return currentPos - 1;
+    if (receiverNumber == 0) {
+        receiverNumber = 1;
+    }
+    else {
+        receiverNumber = 0;
+    }
+
+    return currentPos;
 }
 
 int createRR(unsigned char *respondRR) {
     respondRR[0] = FLAG; // F
     respondRR[1] = A_SET; // A
-
-    if (currentC == C_S0) { // C
-        respondRR[2] = C_S1; 
-        currentC = C_S1;
-    }
-    else if (currentC == C_S1) {
-        respondRR[2] = C_S0; 
-        currentC = C_S0;
-    }
-    else {
-        printf("ERROR: Invalid currentC in createRR() function (link_layer.c)!\n");
-        return -1;
-    }
-
-    respondRR[3] = respondRR[2]; // BCC1
+    respondRR[2] = (senderNumber << 7) || 0x05;
+    respondRR[3] = respondRR[1] ^ respondRR[2]; // BCC1
     respondRR[4] = FLAG; // F
 
     return 0;
@@ -569,6 +574,7 @@ int sendRR(unsigned char *respondRR) {
         printf("ERROR: Failed to sendRR() (link_layer.c)!\n");
         return -1;
     }
+    printf("Sent RR successfully!\n");
 
     return 0;
 }
@@ -577,9 +583,9 @@ void createREJ(unsigned char *respondREJ) {
     respondREJ[0] = FLAG; // F
     respondREJ[1] = A_SET; // A
 
-    respondREJ[2] = currentC;
+    respondREJ[2] = (receiverNumber << 7) || 0x01;
 
-    respondREJ[3] = respondREJ[2]; // BCC1
+    respondREJ[3] = respondREJ[1] ^ respondREJ[2]; // BCC1
     respondREJ[4] = FLAG; // F
 }
 
@@ -588,6 +594,7 @@ int sendREJ(unsigned char *respondREJ) {
         printf("ERROR: Failed to sendREJ() (link_layer.c)!\n");
         return -1;
     }
+    printf("REJ sent successfully!\n");
 
     return 0;
 }
@@ -597,23 +604,16 @@ int llread(unsigned char *packet) {
 
     int numBytesRead = receiveInfoFrame(packet, buf);
 
-
-    // CHEGOU AQUI MUITO BEM!!!!!!!!!!!!!!!!!!
-
     // CREATE BCC2
 
-    int bcc2Received = buf[numBytesRead + 1];
-    int bcc2 = buf[0];
-    for (int i = 1; i < numBytesRead; i++) {
+    int bcc2Received = buf[numBytesRead - 2];
+    int bcc2 = 0x00;
+    for (int i = 4; i < numBytesRead - 2; i++) {
         bcc2 ^= buf[i];
     }
 
-
-
-    
-
     if (bcc2 == bcc2Received) { // Create RR
-        unsigned char *respondRR;
+        unsigned char respondRR[5];
         if (createRR(respondRR) < 0) {
             printf("ERROR: createRR() failed in llread (link_layer.c)!\n");
             return -1;
@@ -632,17 +632,6 @@ int llread(unsigned char *packet) {
             printf("ERROR: sendREJ() failed in llread (link_layer.c)!\n");
             return -1;
         }
-    }
-
-    if (receiverNumber == 0) {
-        receiverNumber = 1;
-    }
-    else if (receiverNumber == 1) {
-        receiverNumber = 0;
-    }
-    else {
-        printf("ERROR (link_layer.c - llread): Invalid receiverNumber!\n");
-        exit(1);
     }
 
     return numBytesRead;

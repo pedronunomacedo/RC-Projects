@@ -4,40 +4,6 @@
 #define BUF_SIZE 256
 
 int prepareControlPacket(unsigned char *controlPacket, int bufSize, char C, int fileSize, const char *filename) {
-    /*
-    infoFrame = malloc(sizeof(unsigned char) * (4 + (bufSize * 2) + 2));
-
-    infoFrame[0] = FLAG;
-    infoFrame[1] = A_SET;
-    infoFrame[2] = C; // Changes between C_S0 AND C_S1
-    infoFrame[3] = A_SET ^ C;
-
-    // Store data
-    infoFrame[4] = buf[0];
-    char bcc2 = buf[0]; // Vaiable to store the XOR while going through the data
-    
-    int countStuffings = 0;
-    for (int i = 1; i < bufSize; i++) {
-        stuffing(infoFrame, buf[i], i, countStuffings);
-        bcc2 ^= buf[i];
-    }
-    // Byte stuffing of the BCC2 before storing it in the array
-    stuffing(infoFrame, bcc2, bufSize, countStuffings);
-
-    int totalBytes = 5 + bufSize + countStuffings; // FLAG | A | C | BCC1 | D1 ... Dn (bufSize) | BCC2 | FLAG
-
-    infoFrame[totalBytes] = FLAG; // Determines the end of the array
-
-    printf("\n\n\n\n\n\n\n\n\n\n\n");
-    for (int i = 0; i < sizeof(infoFrame); i++) {
-        printf("infoFrame[%d] = %d\n", i, infoFrame[i]);
-    }
-    printf("\n\n\n\n\n\n\n\n\n\n\n");
-
-    return totalBytes;
-
-    */
-
     controlPacket[0] = C;
     controlPacket[1] = 0;
 
@@ -90,17 +56,19 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     defs.nRetransmissions = nTries;
     defs.timeout = timeout;
 
+    printf("\n\n-------------  Phase 1 : Establish connection --------------------\n\n");
+
     // Open the connection between the 2 devices and prepare to send and receive
     if (llopen(defs) < 0) {
         printf("ERROR: Couldn't receive UA from receiver!\n");
         return;
     }
 
-    printf("Connection established successfully!\n");
+    printf("\n(Connection established successfully)\n");
 
 
 
-    printf("-------------  Phase 2 : Start reading the penguim file --------------------\n");
+    printf("\n\n-------------  Phase 2 : Start reading the penguim file --------------------\n\n");
 
     unsigned char controlPacket[600];
     struct stat st;
@@ -114,14 +82,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         // 2. Make byte stuffing on the array
         // 3. Send the information frame to the receiver
         int controlPacketSize = prepareControlPacket(controlPacket, BUF_SIZE, 2, fileSize, filename);
-
-        // Print control packet
-        /*
-        printf("--------- CONTROL PACKET ----------\n");
-        for (int i = 0; i < controlPacketSize; i++) {
-            printf("controlPacket[%d]: %02x\n", i, controlPacket[i]);
-        }
-        */
        
         if (llwrite(controlPacket, controlPacketSize) != 0) {
             printf("ERROR: llwrite() failed!\n");
@@ -138,6 +98,4 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         printf("ERROR: Invalid role!\n");
         exit(1);
     }
-    
-
 }

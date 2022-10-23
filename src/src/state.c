@@ -20,7 +20,6 @@ stateMachineInfo stateMachine;
 #define REJ1 0x81
 
 enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsigned char C) {
-    // printf("enter changeState()!\n");
     switch (STATE) {
         case START: // Start node (waiting fot the FLAG)
             if (ch == FLAG) {
@@ -101,71 +100,92 @@ enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsi
 }
 
 
-enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned char ch, char currentC, unsigned char *buf, int *currentPos, int *foundBCC1) {
+enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned char ch, int senderNumber, unsigned char *buf, int *currentPos, int *foundBCC1) {
     switch (STATE) {
         case packSTART:
             if (ch == FLAG) {
+                // printf("\n\nThe char %02x is going to the pack1FLAG1_RCV!\n\n", ch);
                 STATE = packFLAG1_RCV;
+                buf[(*currentPos)++] = FLAG;
             } // else { stay in the same state }
             break;
         case packFLAG1_RCV:
             if (ch == A_SET) {
+                // printf("\n\nThe char %02x is going to the packA_RCV!\n\n", ch);
                 STATE = packA_RCV;
+                buf[(*currentPos)++] = A_SET;
             }
             else if (ch == FLAG) {
+                // printf("\n\nThe char %02x is staying in the packFLAG1_RCV!\n\n", ch);
                 STATE = packFLAG1_RCV;
             }
             else {
+                // printf("\n\nThe char %02x is going to the packSTART!\n\n", ch);
                 STATE = packSTART; // other character received goes to the initial state
             }
             break;
         case packA_RCV:
-            if (ch == currentC) {
+            if (ch == (senderNumber << 6)) {
+                // printf("\n\nThe char %02x is going to the packC_RCV!\n\n", ch);
                 STATE = packC_RCV;
+                buf[(*currentPos)++] = ch;
             }
             else if (ch == FLAG) {
+                // printf("\n\nThe char %02x is going to the packFLAG1_RCV!\n\n", ch);
                 STATE = packFLAG1_RCV;
             }
             else {
+                // printf("\n\nThe char %02x is going to the packSTART!\n\n", ch);
                 STATE = packSTART;
             }
             break;
         case packC_RCV:
-            char expectedBCC1 = (A_SET ^ currentC);
+            char expectedBCC1 = (A_SET ^ (senderNumber << 6));
             if (ch == expectedBCC1) {
+                // printf("\n\nThe char %02x is going to the packBCC1_RCV!\n\n", ch);
                 *foundBCC1 = 1;
                 STATE = packBCC1_RCV;
+                buf[(*currentPos)++] = ch;
                 currentPos = 0;
             }
             else if (ch == FLAG) {
+                // printf("\n\nThe char %02x is going to the packFLAG_RCV!\n\n", ch);
                 STATE = packFLAG1_RCV;
             }
             else {
+                // printf("\n\nThe char %02x is going to the packSTART!\n\n", ch);
                 STATE = packSTART;
             }
             break;
         case packBCC1_RCV:
             if (ch == 0x7D) {
+                // printf("\n\nThe char %02x is going to the packTRANSPARENCY_RCV!\n\n", ch);
                 STATE = packTRANSPARENCY_RCV;
             }
             else if (ch == FLAG) {
+                // printf("\n\nThe char %02x is going to the packSTOP!\n\n", ch);
                 STATE = packSTOP;
+                buf[(*currentPos)++] = FLAG;
             }
             else {
+                // printf("\n\nThe char %02x is going to the packBCC1_RCV!\n\n", ch);
                 buf[(*currentPos)++] = ch;
                 STATE = packBCC1_RCV;
             }
             break;
         case packTRANSPARENCY_RCV:
             if (ch == 0x5E) {
+                // printf("\n\nThe char %02x is going to the packBCC1_RCV!\n\n", ch);
                 STATE = packBCC1_RCV;
                 buf[(*currentPos)++] = FLAG;
             }
             else if (ch == 0x5D) {
+                // printf("\n\nThe char %02x is going to the packBCC1_RCV!\n\n", ch);
                 STATE = packBCC1_RCV;
                 buf[(*currentPos)++] = 0x7D; // octeto
             }
             else {
+                // printf("\n\nThe char %02x is going to the packBCC1_RCV!\n\n", ch);
                 STATE = packBCC1_RCV;
             }
             break;
