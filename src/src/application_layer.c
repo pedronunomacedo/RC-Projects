@@ -77,10 +77,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     int start = 0;
 
     if (resTx == 0) {
-        // 1. Create controlPacket
-        // 2. Call the llwrite to create the info frame
-        // 2. Make byte stuffing on the array
-        // 3. Send the information frame to the receiver
+        // 1. Create controlPacket -> DONE
+        // 2. Call the llwrite to create the info frame -> DONE
+        // 2. Make byte stuffing on the array -> DONE
+        // 3. Send the information frame to the receiver -> DONE
         int controlPacketSize = prepareControlPacket(controlPacket, BUF_SIZE, 2, fileSize, filename);
        
         if (llwrite(controlPacket, controlPacketSize) != 0) {
@@ -89,8 +89,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
     }
     else if (resRx == 0) {
-        unsigned char *readedControlPacket;
-        if (llread(readedControlPacket) < 0) {
+        // 1. Read the information frame -> DONE
+        // 2. Send the response (RR or REJ) to the transmitter -> REVIEW!!!
+        unsigned char *readedInformationFrame;
+        if (llread(readedInformationFrame) < 0) {
             printf("ERROR: llread() failed!\n");
         }
     }

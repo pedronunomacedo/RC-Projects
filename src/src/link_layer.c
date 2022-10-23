@@ -400,14 +400,16 @@ int readReceiverResponse() {
     
     int readedBytes = read(fd, buf, 5);
 
-    int verifyReceiver = 0x05 || ((!senderNumber) << 7);
-    if (readedBytes != -1 && buf != 0) {
-        if ((buf[2] != verifyReceiver) && (buf[3] != (buf[1] ^ buf[2]))) {
-            printf("\nERROR: RR incorrect!\n");
+    int verifyReceiver = 0x05 | ((!senderNumber) << 7); // RR (receiver ready)
+
+    if (readedBytes != -1 && buf != 0 && buf[0] == FLAG) {
+        if ((buf[2] != verifyReceiver) || (buf[3] != (buf[1] ^ buf[2]))) {
+            printf("\nERROR: Received message from llread() incorrectly!\n");
             alarmEnabled = FALSE;
+            return -1;
         }
         else {
-            printf("\nRR received successfully!\n");
+            printf("\nReceived message from llread() successfully!\n");
             alarmEnabled =  FALSE;
 
             if (senderNumber == 1) senderNumber = 0;
@@ -418,40 +420,43 @@ int readReceiverResponse() {
             return 1; // SUCCESS
         }
     }
+
+    return -1; // INSUCCESS
 }
 
-int sendInfoFrame(unsigned char *infoFrame, int totalBytes) {
-    alarmCount = 0;
-    alarmEnabled = FALSE;
+// int sendInfoFrame(unsigned char *infoFrame, int totalBytes) {
+//     alarmCount = 0;
+//     alarmEnabled = FALSE;
 
-    do {
-        enum state STATE;
-        if (alarmEnabled == FALSE) {
-            int res = write(fd, infoFrame, totalBytes);
-            if (res < 0) {
-                printf("ERROR: Failed to send information frame to llread()!\n");
-                continue;
-            }
-            startAlarm(timeout);
-        }
+//     do {
+//         enum state STATE;
+//         if (alarmEnabled == FALSE) {
+//             int res = write(fd, infoFrame, totalBytes);
+//             if (res < 0) {
+//                 printf("ERROR: Failed to send information frame to llread()!\n");
+//                 continue;
+//             }
+//             startAlarm(timeout);
+//         }
 
-        // Read receiverResponse
-        int res = readReceiverResponse();
-        switch (res) {
-            case -1:
-                alarmEnabled = FALSE;
-                break;
-            case 1:
-                STATE = STOP;
-                printf("Received the response from llread() successfully!\n");
-                return 0;
+//         // Read receiverResponse
+//         int res = readReceiverResponse();
+
+//         switch (res) {
+//             case -1:
+//                 alarmEnabled = FALSE;
+//                 break;
+//             case 1:
+//                 STATE = STOP;
+//                 printf("Received the response from llread() successfully!\n");
+//                 return 0;
                 
-        }
-        if (STATE == STOP) break;  
-    } while (alarmCount < nRetransmissions);
+//         }
+//         if (STATE == STOP) break;  
+//     } while (alarmCount < nRetransmissions);
 
-    return -1;
-}
+//     return -1;
+// }
 
 ////////////////////////////////////////////////
 // LLWRITE
@@ -503,8 +508,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
         printf("alarmCount = %d\n", alarmCount);    
     } while (alarmCount < nRetransmissions);
 
-    
-    
+
     return 0;
 }
 
@@ -562,7 +566,7 @@ int receiveInfoFrame(unsigned char *packet, unsigned char *buf) {
 int createRR(unsigned char *respondRR) {
     respondRR[0] = FLAG; // F
     respondRR[1] = A_SET; // A
-    respondRR[2] = (senderNumber << 7) || 0x05;
+    respondRR[2] = (senderNumber << 7) | 0x05;
     respondRR[3] = respondRR[1] ^ respondRR[2]; // BCC1
     respondRR[4] = FLAG; // F
 
@@ -582,9 +586,7 @@ int sendRR(unsigned char *respondRR) {
 void createREJ(unsigned char *respondREJ) {
     respondREJ[0] = FLAG; // F
     respondREJ[1] = A_SET; // A
-
-    respondREJ[2] = (receiverNumber << 7) || 0x01;
-
+    respondREJ[2] = (receiverNumber << 7) | 0x01;
     respondREJ[3] = respondREJ[1] ^ respondREJ[2]; // BCC1
     respondREJ[4] = FLAG; // F
 }
@@ -625,7 +627,7 @@ int llread(unsigned char *packet) {
         }
     }
     else { // Create REJ
-        unsigned char *respondREJ;
+        unsigned char respondREJ[5];
         createREJ(respondREJ);
         
         if (sendREJ(respondREJ) < 0) {
