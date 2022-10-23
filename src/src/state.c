@@ -23,14 +23,11 @@ enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsi
     // printf("enter changeState()!\n");
     switch (STATE) {
         case START: // Start node (waiting fot the FLAG)
-            printf("STATE = START\n");
             if (ch == FLAG) {
-                printf("Received the FLAG!\n");
                 STATE = FLAG_RCV; // Go to the next state
             } // else { stay in the same state }
             break;
         case FLAG_RCV: // State Flag RCV
-            printf("STATE = FLAG_RCV\n");
             if (ch == A) {
                 STATE = A_RCV; // Go to the next state
             }
@@ -42,7 +39,6 @@ enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsi
             }
             break;
         case A_RCV: // State A RCV
-            printf("STATE = A_RCV\n");
             if (ch == C) {
                 STATE = C_RCV; // Go to the next state
             }
@@ -54,7 +50,6 @@ enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsi
             }
             break;
         case C_RCV: // State C RCV
-            printf("STATE = C_RCV\n");
             if (ch == (A ^ C)) {
                 STATE = BCC_OK; // Go to the next state
             }
@@ -66,43 +61,40 @@ enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsi
             }
             break;
         case BCC_OK: // State BCC_OK
-            printf("STATE = BCC_OK\n");
             if (ch == FLAG) {
                 STATE = STOP; // Go to the final state
-                printf("STOP\n");
             }
             else {
                 STATE = START;
             }
             break;
         default:
-            printf("default\n");
             break;
     }
     
 
     // Only to debug!
-    switch (STATE)
-    {
-    case START:
-        printf("Switched to state START!\n");
-        break;
-    case FLAG_RCV:
-        printf("Switched to state FLAG_RCV!\n");
-        break;
-    case A_RCV:
-        printf("Switched to state A_RCV!\n");
-        break;
-    case C_RCV:
-        printf("Switched to state C_RCV!\n");
-        break;
-    case BCC_OK:
-        printf("Switched to state BCC_OK!\n");
-        break;
-    default:
-        printf("Enter STOP!\n");
-        break;
-    }
+    // switch (STATE)
+    // {
+    // case START:
+    //     printf("Switched to state START!\n");
+    //     break;
+    // case FLAG_RCV:
+    //     printf("Switched to state FLAG_RCV!\n");
+    //     break;
+    // case A_RCV:
+    //     printf("Switched to state A_RCV!\n");
+    //     break;
+    // case C_RCV:
+    //     printf("Switched to state C_RCV!\n");
+    //     break;
+    // case BCC_OK:
+    //     printf("Switched to state BCC_OK!\n");
+    //     break;
+    // default:
+    //     printf("Enter STOP!\n");
+    //     break;
+    // }
     ////////////////////////////////////////////////////////////////
 
     return STATE;
@@ -112,14 +104,11 @@ enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsi
 enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned char ch, char currentC, unsigned char *buf, int *currentPos, int *foundBCC1) {
     switch (STATE) {
         case packSTART:
-            printf("STATE = packSTART\n");
             if (ch == FLAG) {
-                printf("Received the FLAG1!\n");
                 STATE = packFLAG1_RCV;
             } // else { stay in the same state }
             break;
         case packFLAG1_RCV:
-            printf("STATE = packFLAG_RCV\n");
             if (ch == A_SET) {
                 STATE = packA_RCV;
             }
@@ -131,7 +120,6 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
             }
             break;
         case packA_RCV:
-            printf("STATE = packA_RCV\n");
             if (ch == currentC) {
                 STATE = packC_RCV;
             }
@@ -143,9 +131,6 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
             }
             break;
         case packC_RCV:
-            printf("STATE = packC_RCV\n");
-            printf("currentC = %02x\n", currentC);
-            printf("A_SET ^ currentC = %02x\n", (A_SET ^ currentC));
             char expectedBCC1 = (A_SET ^ currentC);
             if (ch == expectedBCC1) {
                 *foundBCC1 = 1;
@@ -160,8 +145,7 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
             }
             break;
         case packBCC1_RCV:
-            printf("STATE = packBCC1_RCV\n");
-            if (ch == 0x7E) {
+            if (ch == 0x7D) {
                 STATE = packTRANSPARENCY_RCV;
             }
             else if (ch == FLAG) {
@@ -169,20 +153,16 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
             }
             else {
                 buf[(*currentPos)++] = ch;
-                printf("currentPos (else packBCC1_RCV) = %d\n", *currentPos);
                 STATE = packBCC1_RCV;
             }
             break;
         case packTRANSPARENCY_RCV:
-            printf("STATE = packDATA_RCV\n");
             if (ch == 0x5E) {
                 STATE = packBCC1_RCV;
-                printf("currentPos (if (0x5E) - packTRANSPARENCY_RC) = %d\n", *currentPos);
                 buf[(*currentPos)++] = FLAG;
             }
             else if (ch == 0x5D) {
                 STATE = packBCC1_RCV;
-                printf("currentPos (if (0x5D) - packTRANSPARENCY_RC) = %d\n", *currentPos);
                 buf[(*currentPos)++] = 0x7D; // octeto
             }
             else {
@@ -190,7 +170,6 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
             }
             break;
         default:
-            printf("default\n");
             break;
     }
 
