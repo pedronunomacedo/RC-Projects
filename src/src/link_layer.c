@@ -90,7 +90,6 @@ int sendSet(int fd) {
     int sentBytes = 0;
     sentBytes = write(fd, SET, 5);
 
-    printf("sentBytes: %d\n", sentBytes);
     printf("Sent SET to receiver!\n");
     
     return sentBytes;
@@ -163,7 +162,6 @@ void receiveSET (int fd, unsigned char A, unsigned char C) {
 
         if (bytes > 0) {
             STATE = changeState(STATE, buf, A, C);
-            printf("STATE = %d\n", STATE);
         }
 
         // Only to debug! ///////////////////////////////////////////////
@@ -282,7 +280,6 @@ int llopen(LinkLayer connectionParameters)
             enum state STATE;
 
             do {
-                printf("alarmEnabled = %d\n", alarmEnabled);
                 if (alarmCount == 0 || alarmEnabled == TRUE) {
                     if (sendReadyToTransmitMsg(fd) < 0) {
                         printf("ERROR: Failed to send SET!\n");
@@ -293,8 +290,6 @@ int llopen(LinkLayer connectionParameters)
                 // Read UA
                 prepareUA();
                 STATE = receiveUA(fd, A_UA, C_UA);
-                printf("afterReceiveUA\n"); // TEST
-                printf(":alarmCount (%d)\n", alarmCount);
             } while (alarmCount < connectionParameters.nRetransmissions && STATE != STOP);
 
             if (alarmCount < connectionParameters.nRetransmissions) printf("Received UA from receiver successfully!\n");
