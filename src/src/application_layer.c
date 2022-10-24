@@ -92,10 +92,23 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         // 1. Read the information frame -> DONE
         // 2. Send the response (RR or REJ) to the transmitter -> REVIEW!!!
         unsigned char *readedInformationFrame;
-        if (llread(readedInformationFrame) < 0) {
-            printf("ERROR: llread() failed!\n");
+        int STOP = FALSE;
+        while (STOP == FALSE) {
+            int res = llread(readedInformationFrame);
+            if (res == -1) {
+                printf("ERROR: llread() failed!\n");
+            }
+            else if (res == -2) {
+                printf("REJ sent!\n");
+                STOP = FALSE;
+            }
+            else if (res > 0) {
+                STOP = TRUE;
+            }
         }
         
+        
+
     }
     else {
         printf("ERROR: Invalid role!\n");

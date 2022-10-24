@@ -61,7 +61,7 @@ int alarmCount = 0;
 
 // Alarm function handler
 void alarmHandler(int signal) {
-    alarmEnabled = FALSE;
+    alarmEnabled = TRUE;
     alarmCount++;
 
     printf("\nAlarm #%d\n", alarmCount);
@@ -71,12 +71,9 @@ void alarmHandler(int signal) {
 int startAlarm(int timeout){
     // Set alarm function handler
     (void)signal(SIGALRM, alarmHandler);
+    alarmEnabled = FALSE;
+    alarm(timeout);
 
-    if (alarmEnabled == FALSE)
-    {
-        alarm(timeout);
-        alarmEnabled = TRUE;
-    }
     return 0;
 }
 
@@ -93,6 +90,7 @@ int sendSet(int fd) {
     int sentBytes = 0;
     sentBytes = write(fd, SET, 5);
 
+    printf("sentBytes: %d\n", sentBytes);
     printf("Sent SET to receiver!\n");
     
     return sentBytes;
@@ -116,16 +114,14 @@ int sendUA(int fd) {
 }
 
 enum state receiveUA (int fd, unsigned char A, unsigned char C) {
-    alarmEnabled = TRUE;
     enum state STATE = START;
     char buf;
-    
-    while (STATE != STOP && alarmEnabled == TRUE) {
+
+    while (STATE != STOP && alarmEnabled == FALSE) {
         int bytes = read(fd, &buf, 1);
 
         if (bytes > 0) {
             STATE = changeState(STATE, buf, A, C);
-            if (STATE == STOP) alarmEnabled = FALSE;
         }
 
         // Only to debug! ///////////////////////////////////////////////
@@ -167,6 +163,7 @@ void receiveSET (int fd, unsigned char A, unsigned char C) {
 
         if (bytes > 0) {
             STATE = changeState(STATE, buf, A, C);
+            printf("STATE = %d\n", STATE);
         }
 
         // Only to debug! ///////////////////////////////////////////////
@@ -236,7 +233,7 @@ int llopen(LinkLayer connectionParameters)
     (void)signal(SIGALRM, alarmHandler);
 
     connectionParametersGlobal = connectionParameters;
-    fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
+    fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
     if (fd < 0) {
         perror(connectionParameters.serialPort);
@@ -282,24 +279,23 @@ int llopen(LinkLayer connectionParameters)
     switch(connectionParameters.role) {
         case LlTx:
             alarmCount = 0;
+            enum state STATE;
 
             do {
-                alarm(connectionParameters.timeout);
-                enum state STATE;
-                do {
-                    if (alarmCount == 0 || alarmEnabled == TRUE) {
-                        if (sendReadyToTransmitMsg(fd) < 0) {
-                            printf("ERROR: Failed to send SET!\n");
-                            continue;
-                        }
+                printf("alarmEnabled = %d\n", alarmEnabled);
+                if (alarmCount == 0 || alarmEnabled == TRUE) {
+                    if (sendReadyToTransmitMsg(fd) < 0) {
+                        printf("ERROR: Failed to send SET!\n");
+                        continue;
                     }
-                    // Read UA
-                    prepareUA();
-                    STATE = receiveUA(fd, A_UA, C_UA);
-                } while (alarmEnabled == TRUE);
+                    startAlarm(connectionParameters.timeout);
+                }
+                // Read UA
+                prepareUA();
+                STATE = receiveUA(fd, A_UA, C_UA);
+                printf("afterReceiveUA\n"); // TEST
                 printf(":alarmCount (%d)\n", alarmCount);
-                if (STATE == STOP) break;
-            } while (alarmCount < connectionParameters.nRetransmissions);
+            } while (alarmCount < connectionParameters.nRetransmissions && STATE != STOP);
 
             if (alarmCount < connectionParameters.nRetransmissions) printf("Received UA from receiver successfully!\n");
             else {
@@ -633,6 +629,8 @@ int llread(unsigned char *packet) {
             printf("ERROR: sendREJ() failed in llread (link_layer.c)!\n");
             return -1;
         }
+
+        return -2; // REJ sent
     }
 
     if (receiverNumber == 0) {
