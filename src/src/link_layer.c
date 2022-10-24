@@ -400,13 +400,17 @@ int readReceiverResponse() {
     
     int readedBytes = read(fd, buf, 5);
 
+    printf("1 << 7 = %02x", 1 << 7);
+
     int verifyReceiver = 0x05 | ((!senderNumber) << 7); // RR (receiver ready)
+    printf("buf[2] = %02x", buf[2]);
 
     if (readedBytes != -1 && buf != 0 && buf[0] == FLAG) {
         if ((buf[2] != verifyReceiver) || (buf[3] != (buf[1] ^ buf[2]))) {
             printf("\nERROR: Received message from llread() incorrectly!\n");
             alarmEnabled = FALSE;
-            return -1;
+
+            return -1; // INSUCCESS
         }
         else {
             printf("\nReceived message from llread() successfully!\n");
@@ -481,7 +485,6 @@ int llwrite(const unsigned char *buf, int bufSize) {
     int STOP = FALSE;
 
     do {
-        enum state STATE;
         if (alarmEnabled == FALSE) {
             int res = write(fd, infoFrame, totalBytes);
             if (res < 0) {
@@ -499,12 +502,11 @@ int llwrite(const unsigned char *buf, int bufSize) {
                 alarmEnabled = FALSE;
                 break;
             case 1:
-                STATE = STOP;
-                printf("Received response from llread() successfully!\n");
-                return 0;
-                
+                STOP = TRUE;
+                printf("Received response from llread() successfully!\n");  
         }
-        if (STATE == STOP) break;
+
+        if (STOP == TRUE) break;
         printf("alarmCount = %d\n", alarmCount);    
     } while (alarmCount < nRetransmissions);
 
@@ -523,6 +525,8 @@ int receiveInfoFrame(unsigned char *packet, unsigned char *buf) {
     int packetidx = 0;
     int currentPos = 0;
     int foundBCC1 = 0;
+
+
 
     while (STATE != packSTOP) {
         if (read(fd, &ch, 1) < 0) {
@@ -553,20 +557,14 @@ int receiveInfoFrame(unsigned char *packet, unsigned char *buf) {
         }
     }
 
-    if (receiverNumber == 0) {
-        receiverNumber = 1;
-    }
-    else {
-        receiverNumber = 0;
-    }
-
     return currentPos;
 }
 
 int createRR(unsigned char *respondRR) {
     respondRR[0] = FLAG; // F
     respondRR[1] = A_SET; // A
-    respondRR[2] = (senderNumber << 7) | 0x05;
+    respondRR[2] = (receiverNumber << 7) | 0x05;
+    printf("receiverNumber: %d\n", receiverNumber);
     respondRR[3] = respondRR[1] ^ respondRR[2]; // BCC1
     respondRR[4] = FLAG; // F
 
@@ -629,11 +627,19 @@ int llread(unsigned char *packet) {
     else { // Create REJ
         unsigned char respondREJ[5];
         createREJ(respondREJ);
+        alarmEnabled = FALSE;
         
         if (sendREJ(respondREJ) < 0) {
             printf("ERROR: sendREJ() failed in llread (link_layer.c)!\n");
             return -1;
         }
+    }
+
+    if (receiverNumber == 0) {
+        receiverNumber = 1;
+    }
+    else {
+        receiverNumber = 0;
     }
 
     return numBytesRead;

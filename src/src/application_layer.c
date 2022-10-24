@@ -95,6 +95,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         if (llread(readedInformationFrame) < 0) {
             printf("ERROR: llread() failed!\n");
         }
+        
     }
     else {
         printf("ERROR: Invalid role!\n");
