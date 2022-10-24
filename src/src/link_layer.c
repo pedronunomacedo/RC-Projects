@@ -391,10 +391,7 @@ int readReceiverResponse() {
     
     int readedBytes = read(fd, buf, 5);
 
-    printf("1 << 7 = %02x", 1 << 7);
-
     int verifyReceiver = 0x05 | ((!senderNumber) << 7); // RR (receiver ready)
-    printf("buf[2] = %02x", buf[2]);
 
     if (readedBytes != -1 && buf != 0 && buf[0] == FLAG) {
         if ((buf[2] != verifyReceiver) || (buf[3] != (buf[1] ^ buf[2]))) {
@@ -404,7 +401,6 @@ int readReceiverResponse() {
             return -1; // INSUCCESS
         }
         else {
-            printf("\nReceived message from llread() successfully!\n");
             alarmEnabled =  FALSE;
 
             if (senderNumber == 1) senderNumber = 0;
@@ -555,7 +551,6 @@ int createRR(unsigned char *respondRR) {
     respondRR[0] = FLAG; // F
     respondRR[1] = A_SET; // A
     respondRR[2] = (receiverNumber << 7) | 0x05;
-    printf("receiverNumber: %d\n", receiverNumber);
     respondRR[3] = respondRR[1] ^ respondRR[2]; // BCC1
     respondRR[4] = FLAG; // F
 
