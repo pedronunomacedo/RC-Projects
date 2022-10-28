@@ -100,20 +100,18 @@ enum state changeState(enum state STATE, unsigned char ch, unsigned char A, unsi
 }
 
 
-enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned char ch, int senderNumber, unsigned char *buf, int *currentPos, int *foundBCC1) {
+enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned char ch, int senderNumber, unsigned char *buf, int *currentPos, int *foundBCC1, int *transparencyElse) {
     switch (STATE) {
         case packSTART:
             if (ch == FLAG) {
                 // printf("\n\nThe char %02x is going to the pack1FLAG1_RCV!\n\n", ch);
                 STATE = packFLAG1_RCV;
-                buf[(*currentPos)++] = FLAG;
             } // else { stay in the same state }
             break;
         case packFLAG1_RCV:
             if (ch == A_SET) {
                 // printf("\n\nThe char %02x is going to the packA_RCV!\n\n", ch);
                 STATE = packA_RCV;
-                buf[(*currentPos)++] = A_SET;
             }
             else if (ch == FLAG) {
                 // printf("\n\nThe char %02x is staying in the packFLAG1_RCV!\n\n", ch);
@@ -126,9 +124,7 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
             break;
         case packA_RCV:
             if (ch == (senderNumber << 6)) {
-                // printf("\n\nThe char %02x is going to the packC_RCV!\n\n", ch);
                 STATE = packC_RCV;
-                buf[(*currentPos)++] = ch;
             }
             else if (ch == FLAG) {
                 // printf("\n\nThe char %02x is going to the packFLAG1_RCV!\n\n", ch);
@@ -139,13 +135,12 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
                 STATE = packSTART;
             }
             break;
-        case packC_RCV:
+        case packC_RCV:;
             char expectedBCC1 = (A_SET ^ (senderNumber << 6));
             if (ch == expectedBCC1) {
                 // printf("\n\nThe char %02x is going to the packBCC1_RCV!\n\n", ch);
                 *foundBCC1 = 1;
                 STATE = packBCC1_RCV;
-                buf[(*currentPos)++] = ch;
                 currentPos = 0;
             }
             else if (ch == FLAG) {
@@ -165,7 +160,6 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
             else if (ch == FLAG) {
                 // printf("\n\nThe char %02x is going to the packSTOP!\n\n", ch);
                 STATE = packSTOP;
-                buf[(*currentPos)++] = FLAG;
             }
             else {
                 // printf("\n\nThe char %02x is going to the packBCC1_RCV!\n\n", ch);
@@ -187,6 +181,9 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
             else {
                 // printf("\n\nThe char %02x is going to the packBCC1_RCV!\n\n", ch);
                 STATE = packBCC1_RCV;
+                buf[(*currentPos)++] = 0x7D;
+                buf[(*currentPos)++] = ch;
+                transparencyElse = TRUE;
             }
             break;
         default:
@@ -202,15 +199,15 @@ unsigned char superviseTrama[2] = {0};
 int changeStateSuperviseTrama(unsigned char buf, enum state *STATE) {
     switch ((*STATE)) {
         case START: // Start node (waiting fot the FLAG)
-            printf("STATE = START\n");
+            //printf("STATE = START\n");
             if (buf == FLAG) {
-                printf("Received the FLAG!\n");
+                //printf("Received the FLAG!\n");
 
                 STATE = FLAG_RCV; // Go to the next state
             } // else { stay in the same state }
             break;
         case FLAG_RCV: // State Flag RCV
-            printf("STATE = FLAG_RCV\n");
+            //printf("STATE = FLAG_RCV\n");
             if (buf == A_SET) {
                 STATE = A_RCV; // Go to the next state
                 superviseTrama[0] = buf;
@@ -223,7 +220,7 @@ int changeStateSuperviseTrama(unsigned char buf, enum state *STATE) {
             }
             break;
         case A_RCV: // State A RCV
-            printf("STATE = A_RCV\n");
+            //printf("STATE = A_RCV\n");
             if (buf == RR1) {
                 STATE = C_RCV; // Go to the next state
                 superviseTrama[1] = buf;
@@ -236,7 +233,7 @@ int changeStateSuperviseTrama(unsigned char buf, enum state *STATE) {
             }
             break;
         case C_RCV: // State C RCV
-            printf("STATE = C_RCV\n");
+            //printf("STATE = C_RCV\n");
             if (buf == (superviseTrama[0] ^ superviseTrama[1])) {
                 STATE = BCC_OK; // Go to the next state
             }
@@ -248,7 +245,7 @@ int changeStateSuperviseTrama(unsigned char buf, enum state *STATE) {
             }
             break;
         case BCC_OK: // State BCC_OK
-            printf("STATE = BCC_OK\n");
+            //printf("STATE = BCC_OK\n");
             if (buf == FLAG) {
                 STATE = START; // Go to the final state
                 switch (superviseTrama[1]) {
@@ -261,7 +258,7 @@ int changeStateSuperviseTrama(unsigned char buf, enum state *STATE) {
                     case REJ1:
                         return 4;
                 }
-                printf("STOP\n");
+                //printf("STOP\n");
             }
             else {
                 STATE = START;

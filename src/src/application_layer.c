@@ -2,6 +2,7 @@
 
 #include "../include/application_layer.h"
 #define BUF_SIZE 256
+#define BUF_SIZE2 400
 
 int prepareControlPacket(unsigned char *controlPacket, int bufSize, char C, int fileSize, const char *filename) {
     controlPacket[0] = C;
@@ -33,15 +34,26 @@ int prepareControlPacket(unsigned char *controlPacket, int bufSize, char C, int 
     return currentPos; // Goes to llwrite!
 }
 
+int prepareDataPacket(unsigned char *dataBytes, unsigned char *dataControlPacket, int numSequence, int numBytes) {
+    dataControlPacket[0] = 0x01;
+    dataControlPacket[1] = numSequence;
+    dataControlPacket[2] = numBytes / 255;
+    dataControlPacket[3] = numBytes % 255;
+
+    for(int i=0;i<numBytes;i++) {
+        dataControlPacket[i+4] = dataBytes[i];
+    }
+
+    return (numBytes + 4);
+}
+
 
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename) {
     // Emissor
-    // printf("%s\n",role);
     int resTx = strcmp(role,"tx");
-    // printf("%d\n",resTx);
     int resRx = strcmp(role,"rx");
-    // printf("%d\n",resRx);
+
     LinkLayer defs;
     strcpy(defs.serialPort, serialPort);
     if(resTx == 0){
@@ -87,28 +99,110 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             printf("ERROR: llwrite() failed!\n");
             return;
         }
+
+        unsigned char dataPacket[BUF_SIZE], dataBytes[BUF_SIZE], fileOver = FALSE;
+        int dataPacketSize = 0;
+
+        FILE* filePtr;
+
+        int numSequence = 0, index = 0, packetSize = 100;
+
+        filePtr = fopen(filename, "rb");
+        if (filePtr == NULL) {
+            printf("ERROR: Failed to read from file with name '%s'\n", filename);
+            return;
+        }
+
+        // Start reading the file
+
+        int totalBytesRead = 0;
+        int numBytesRead = 0;
+        while ((numBytesRead = fread(dataBytes, (size_t) 1, (size_t) 100, filePtr)) > 0) {
+            // printf("\n------------- Packet %d File --------------\n", numSequence);
+            // for (int i = 0; i < numBytesRead; i++) {
+            //     printf("dataBytes[%d] = %02x\n", i, dataBytes[i]);
+            // }
+            // printf("-------------------------------------------\n\n");
+
+            // Create data packet
+            int dataPacketSize = prepareDataPacket(dataBytes, dataPacket, numSequence++, packetSize);
+
+            if (llwrite(dataPacket, dataPacketSize) < 0) { // PRESO AQUI!
+                printf("ERROR: Failed to write data packet to llwrite!\n");
+                return;
+            }
+            totalBytesRead += numBytesRead;
+        }
+
+        // Create conyrol packet end
+        int controlPacketSizeEnd = prepareControlPacket(controlPacket, BUF_SIZE, 3, fileSize, filename);
+
+        if (llwrite(controlPacket, controlPacketSizeEnd) < 0) {
+            printf("ERROR: Failed to write control packet end to llwrite!\n");
+            return;
+        }
+
+        fclose(filePtr);
     }
     else if (resRx == 0) {
         // 1. Read the information frame -> DONE
         // 2. Send the response (RR or REJ) to the transmitter -> REVIEW!!!
-        unsigned char *readedInformationFrame;
-        int STOP = FALSE;
-        while (STOP == FALSE) {
-            int res = llread(readedInformationFrame);
-            if (res == -1) {
-                printf("ERROR: llread() failed!\n");
-            }
-            else if (res == -2) {
-                printf("REJ sent!\n");
-                STOP = FALSE;
-            }
-            else if (res > 0) {
-                STOP = TRUE;
+        // unsigned char *readedInformationFrame;
+        // int STOP = FALSE;
+        // while (STOP == FALSE) {
+        //     int res = llread(readedInformationFrame);
+        //     if (res == -1) {
+        //         printf("ERROR: llread() failed!\n");
+        //     }
+        //     else if (res == -2) {
+        //         printf("REJ sent!\n");
+        //         STOP = FALSE;
+        //     }
+        //     else if (res > 0) {
+        //         STOP = TRUE;
+        //     }
+        // }
+        
+        unsigned char readInformation[BUF_SIZE2];
+        unsigned char controlPacket[BUF_SIZE];
+        int bytesReadCTRLPacket = 0;
+        if ((bytesReadCTRLPacket = llread(controlPacket)) > 0) {
+            if (controlPacket[0] == 2) {
+                printf("Received control packet successfully!\n");
             }
         }
-        
-        
 
+        FILE* fileCreating = fopen(filename, "wb");
+
+        int totalBytesRead = 0, totalFrames = 0;
+        for (int i = 0; i < 1000; i++) {
+            int bytesread = llread(&readInformation); // data + BCC2
+            totalFrames++;
+            totalBytesRead += bytesread;
+            if (bytesread == -2) {
+                printf("RECEIVED control packet END on application_layer!\n");
+                break;
+            }
+            unsigned char fileData[bytesread - 5];
+
+            for (int i = 4; i < bytesread - 1; i++) {
+                fileData[i - 4] = readInformation[i]; // Just the penguin
+            }
+            if(readInformation[0]==0x03 ){
+                break;
+            }
+            if(readInformation[0]==0x02 ){
+                continue;
+            }
+            for (int i = 0; i < (bytesread - 5); i++) {
+                fputc(fileData[i], fileCreating);
+            }
+            //fwrite(fileData, sizeof(unsigned char), bytesread - 5, fileCreating);
+        }
+        printf("\n\n\n\ntotalBytesRead: %d\n", totalBytesRead); // 11548 -> 10968
+        printf("totalFrames: %d\n", totalFrames);
+
+        fclose(fileCreating);
     }
     else {
         printf("ERROR: Invalid role!\n");
