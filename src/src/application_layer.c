@@ -89,10 +89,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     int start = 0;
 
     if (resTx == 0) {
-        // 1. Create controlPacket -> DONE
-        // 2. Call the llwrite to create the info frame -> DONE
-        // 2. Make byte stuffing on the array -> DONE
-        // 3. Send the information frame to the receiver -> DONE
+        // 1. Create controlPacket
+        // 2. Call the llwrite to create the info frame
+        // 2. Make byte stuffing on the array
+        // 3. Send the information frame to the receiver
         int controlPacketSize = prepareControlPacket(controlPacket, BUF_SIZE, 2, fileSize, filename);
        
         if (llwrite(controlPacket, controlPacketSize) != 0) {
@@ -118,16 +118,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         int totalBytesRead = 0;
         int numBytesRead = 0;
         while ((numBytesRead = fread(dataBytes, (size_t) 1, (size_t) 100, filePtr)) > 0) {
-            // printf("\n------------- Packet %d File --------------\n", numSequence);
-            // for (int i = 0; i < numBytesRead; i++) {
-            //     printf("dataBytes[%d] = %02x\n", i, dataBytes[i]);
-            // }
-            // printf("-------------------------------------------\n\n");
-
             // Create data packet
             int dataPacketSize = prepareDataPacket(dataBytes, dataPacket, numSequence++, packetSize);
 
-            if (llwrite(dataPacket, dataPacketSize) < 0) { // PRESO AQUI!
+            if (llwrite(dataPacket, dataPacketSize) < 0) {
                 printf("ERROR: Failed to write data packet to llwrite!\n");
                 return;
             }
@@ -145,23 +139,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         fclose(filePtr);
     }
     else if (resRx == 0) {
-        // 1. Read the information frame -> DONE
-        // 2. Send the response (RR or REJ) to the transmitter -> REVIEW!!!
-        // unsigned char *readedInformationFrame;
-        // int STOP = FALSE;
-        // while (STOP == FALSE) {
-        //     int res = llread(readedInformationFrame);
-        //     if (res == -1) {
-        //         printf("ERROR: llread() failed!\n");
-        //     }
-        //     else if (res == -2) {
-        //         printf("REJ sent!\n");
-        //         STOP = FALSE;
-        //     }
-        //     else if (res > 0) {
-        //         STOP = TRUE;
-        //     }
-        // }
+        // 1. Read the information frame
+        // 2. Send the response (RR or REJ) to the transmitter
         
         unsigned char readInformation[BUF_SIZE2];
         unsigned char controlPacket[BUF_SIZE];
@@ -197,7 +176,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             for (int i = 0; i < (bytesread - 5); i++) {
                 fputc(fileData[i], fileCreating);
             }
-            //fwrite(fileData, sizeof(unsigned char), bytesread - 5, fileCreating);
         }
         printf("\n\n\n\ntotalBytesRead: %d\n", totalBytesRead); // 11548 -> 10968
         printf("totalFrames: %d\n", totalFrames);
@@ -208,4 +186,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         printf("ERROR: Invalid role!\n");
         exit(1);
     }
+
+    printf("\n\n-------------  Phase 3 : Close connection --------------------\n\n");
+
+    llclose();
 }
