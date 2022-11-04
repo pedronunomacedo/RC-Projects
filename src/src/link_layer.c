@@ -403,8 +403,8 @@ int llwrite(const unsigned char *buf, int bufSize) {
     do {
         if (timerReplaced == 0) {
             int res = write(fd, infoFrame, totalBytes);
+            //sleep(1);
             if (res < 0)
-
             {
                 printf("ERROR: Failed to send infoFrame!\n");
                 continue;
@@ -426,7 +426,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
         if (STOP == TRUE)
             break;
-        printf("alarmCount = %d\n", alarmCount);
+        //printf("alarmCount = %d\n", alarmCount);
     } while (alarmCount < nRetransmissions && STOP == FALSE && alarmEnabled == TRUE);
 
     return 0;
@@ -523,12 +523,7 @@ int sendREJ(unsigned char *respondREJ) {
 int llread(unsigned char *packet) {
     unsigned char buf[1000];
 
-    int numBytesRead = receiveInfoFrame(packet, buf);
-
-    if (numBytesRead == -2) { // End control packet
-        printf("RECEIVED Control packet end on llread()!\n");
-        return -2;
-    }
+    int numBytesRead = receiveInfoFrame(packet, &buf);
 
     // CREATE BCC2
 
@@ -574,6 +569,9 @@ int llread(unsigned char *packet) {
         printf("RECEIVED Control packet end on llread()!\n");
         return -2;
     }
+
+    for(int i=0;i<numBytesRead;i++)
+        packet[i] = buf[i];
 
     return numBytesRead;
 }

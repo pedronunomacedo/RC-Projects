@@ -162,7 +162,8 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
                 STATE = packSTOP;
             }
             else {
-                // printf("\n\nThe char %02x is going to the packBCC1_RCV!\n\n", ch);
+                //printf("\n\nThe char %02x is going to the packBCC1_RCV!\n", ch);
+                //printf("\n\nThe char %02x is going to the %d!\n", ch, *(currentPos)+1);
                 buf[(*currentPos)++] = ch;
                 STATE = packBCC1_RCV;
             }

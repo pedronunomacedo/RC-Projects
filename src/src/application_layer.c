@@ -4,12 +4,12 @@
 #define BUF_SIZE 256
 #define BUF_SIZE2 400
 
-int prepareControlPacket(unsigned char *controlPacket, int bufSize, char C, int fileSize, const char *filename) {
+int prepareControlPacket(unsigned char *controlPacket, int bufSize, unsigned char C, int fileSize, const char *filename) {
     controlPacket[0] = C;
     controlPacket[1] = 0;
 
     unsigned char len; // this will be used to hold strlens
-    char sizeStr[10];
+    unsigned char sizeStr[10];
     sprintf(sizeStr, "%d", fileSize); // stores the size of the file in a string
     unsigned char length = strlen(sizeStr); // Stores the length of the sizeStr variable
 
@@ -94,11 +94,19 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         // 2. Make byte stuffing on the array
         // 3. Send the information frame to the receiver
         int controlPacketSize = prepareControlPacket(controlPacket, BUF_SIZE, 2, fileSize, filename);
+
+        printf("control packet: ");
+        for (int i=0; i<controlPacketSize;i++){
+            printf("%x ", controlPacket[i]);
+        }
+        printf("\n");
        
         if (llwrite(controlPacket, controlPacketSize) != 0) {
             printf("ERROR: llwrite() failed!\n");
             return;
         }
+
+        printf("send control packet\n");
 
         unsigned char dataPacket[BUF_SIZE], dataBytes[BUF_SIZE], fileOver = FALSE;
         int dataPacketSize = 0;
@@ -118,14 +126,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         int totalBytesRead = 0;
         int numBytesRead = 0;
         while ((numBytesRead = fread(dataBytes, (size_t) 1, (size_t) 100, filePtr)) > 0) {
+            // printf("\n===%d - %d===\n", numBytesRead, numSequence);
             // Create data packet
-            int dataPacketSize = prepareDataPacket(dataBytes, dataPacket, numSequence++, packetSize);
+            int dataPacketSize = prepareDataPacket(dataBytes, dataPacket, numSequence++, numBytesRead);
 
             if (llwrite(dataPacket, dataPacketSize) < 0) {
                 printf("ERROR: Failed to write data packet to llwrite!\n");
                 return;
             }
             totalBytesRead += numBytesRead;
+            //printf("total = %d\n", totalBytesRead);
         }
 
         // Create conyrol packet end
@@ -145,7 +155,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         unsigned char readInformation[BUF_SIZE2];
         unsigned char controlPacket[BUF_SIZE];
         int bytesReadCTRLPacket = 0;
-        if ((bytesReadCTRLPacket = llread(controlPacket)) > 0) {
+        if ((bytesReadCTRLPacket = llread(&controlPacket)) > 0) {
             if (controlPacket[0] == 2) {
                 printf("Received control packet successfully!\n");
             }
@@ -154,10 +164,13 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         FILE* fileCreating = fopen(filename, "wb");
 
         int totalBytesRead = 0, totalFrames = 0;
-        for (int i = 0; i < 1000; i++) {
+        for (int i = 0; i < 10968/100 + 9999999999999; i++) {
             int bytesread = llread(&readInformation); // data + BCC2
             totalFrames++;
-            totalBytesRead += bytesread;
+            if (readInformation[0] == 0x01)
+                totalBytesRead += bytesread-5;
+            //printf("\n===%d - %d -> %d===\n", bytesread, readInformation[1], readInformation[2] * 255 + readInformation[3]);
+            //printf("total = %d\n", totalBytesRead);
             if (bytesread == -2) {
                 printf("RECEIVED control packet END on application_layer!\n");
                 break;
@@ -167,18 +180,19 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             for (int i = 4; i < bytesread - 1; i++) {
                 fileData[i - 4] = readInformation[i]; // Just the penguin
             }
-            if(readInformation[0]==0x03 ){
+            /*if(readInformation[0]==0x03 ){
+                printf("RECEIVED control packet END on application_layer!\n");
                 break;
             }
             if(readInformation[0]==0x02 ){
                 continue;
-            }
+            }*/
             for (int i = 0; i < (bytesread - 5); i++) {
                 fputc(fileData[i], fileCreating);
             }
         }
-        printf("\n\n\n\ntotalBytesRead: %d\n", totalBytesRead); // 11548 -> 10968
-        printf("totalFrames: %d\n", totalFrames);
+        //printf("\n\n\n\ntotalBytesRead: %d\n", totalBytesRead); // 11548 -> 10968
+        //printf("totalFrames: %d\n", totalFrames);
 
         fclose(fileCreating);
     }
