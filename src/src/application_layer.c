@@ -164,7 +164,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         FILE* fileCreating = fopen(filename, "wb");
 
         int totalBytesRead = 0, totalFrames = 0;
-        for (int i = 0; i < 10968/100 + 9999999999999; i++) {
+        for (int i = 0; i < 10968/100 + 2; i++) {
             int bytesread = llread(&readInformation); // data + BCC2
             totalFrames++;
             if (readInformation[0] == 0x01)
