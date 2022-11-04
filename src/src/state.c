@@ -184,7 +184,7 @@ enum stateInfoPacket changeInfoPacketState(enum stateInfoPacket STATE, unsigned 
                 STATE = packBCC1_RCV;
                 buf[(*currentPos)++] = 0x7D;
                 buf[(*currentPos)++] = ch;
-                transparencyElse = TRUE;
+                *transparencyElse = TRUE;
             }
             break;
         default:

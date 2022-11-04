@@ -295,7 +295,7 @@ int stuffing(unsigned char *frame, char byte, int i, int countStuffings) {
  * @return int
  */
 
-int prepareInfoFrame(unsigned char *buf, int bufSize, unsigned char *infoFrame) {
+int prepareInfoFrame(const unsigned char *buf, int bufSize, unsigned char *infoFrame) {
     infoFrame[0] = FLAG;
     infoFrame[1] = A_SET;
     infoFrame[2] = (senderNumber << 6); // Changes between C_S0 AND C_S1
@@ -355,7 +355,7 @@ int readReceiverResponse() {
         verifyReceiver = 0x05; // RR (receiver ready)
     }
 
-    if (readedBytes != -1 && buf != 0 && buf[0] == FLAG) {
+    if (readedBytes != -1 && buf[0] == FLAG) {
         if ((buf[2] != verifyReceiver) || (buf[3] != (buf[1] ^ buf[2]))) {
             printf("\nERROR: Received message from llread() incorrectly!\n");
 
@@ -401,6 +401,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
     int timerReplaced = 0;
 
     do {
+        printf("[LOG] Writing Information Frame.\n");
         if (timerReplaced == 0) {
             int res = write(fd, infoFrame, totalBytes);
             //sleep(1);
@@ -426,7 +427,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
         if (STOP == TRUE)
             break;
-        //printf("alarmCount = %d\n", alarmCount);
+        printf("alarmCount = %d\n", alarmCount);
     } while (alarmCount < nRetransmissions && STOP == FALSE && alarmEnabled == TRUE);
 
     return 0;
@@ -441,7 +442,8 @@ int receiveInfoFrame(unsigned char *packet, unsigned char *buf) {
     unsigned char ch;
     int packetidx = 0;
     int currentPos = 0;
-    int foundBCC1 = 0, readBytes = TRUE;
+    int foundBCC1 = 0;
+    int readBytes = TRUE;
     int transparencyElse = FALSE;
 
     while (STATE != packSTOP) {
@@ -469,10 +471,6 @@ int receiveInfoFrame(unsigned char *packet, unsigned char *buf) {
             break;
         case packERROR:
             break;
-        }
-
-        if(buf[0]==0x03){
-            return -2;
         }
     }
 
@@ -523,13 +521,13 @@ int sendREJ(unsigned char *respondREJ) {
 int llread(unsigned char *packet) {
     unsigned char buf[1000];
 
-    int numBytesRead = receiveInfoFrame(packet, &buf);
+    int numBytesRead = receiveInfoFrame(packet, buf);
 
     // CREATE BCC2
 
     int bcc2Received = buf[numBytesRead - 1];
     int bcc2 = 0x00;
-    for (int i = 0; i < numBytesRead - 1; i++) {
+    for (int i = 0; i < numBytesRead - 1; i++) {    
         bcc2 ^= buf[i];
     }
 
@@ -565,11 +563,6 @@ int llread(unsigned char *packet) {
         return -2; // REJ sent
     }
 
-    if (numBytesRead == -2) { // End control packet
-        printf("RECEIVED Control packet end on llread()!\n");
-        return -2;
-    }
-
     for(int i=0;i<numBytesRead;i++)
         packet[i] = buf[i];
 
@@ -587,7 +580,8 @@ int llclose() {
     if(role == LlRx) {
 
         unsigned char buf[6] = {0}, parcels[6] = {0};
-        unsigned char STOP = 0, UA = 0;
+        unsigned char STOP = 0;
+        //unsigned char UA = 0;
 
         buf[0] = 0x7E;
         buf[1] = 0x03;
