@@ -190,6 +190,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 break;
             } 
 
+            //sleep(2);
+
             //printf("\n===%d - %d -> %d===\n", bytesread, readInformation[1], readInformation[2] * 255 + readInformation[3]);
             //printf("total = %d\n", totalBytesRead);
         }
@@ -204,6 +206,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     }
 
     printf("\n\n-------------  Phase 3 : Close connection --------------------\n\n");
+
+    //sleep(5);
 
     llclose();
 }

@@ -61,7 +61,7 @@ int alarmCount = 0;
 // Alarm function handler
 void alarmHandler(int signal)
 {
-    alarmEnabled = TRUE;
+    alarmEnabled = FALSE;
     alarmCount++;
 
     printf("\nAlarm #%d\n", alarmCount);
@@ -74,6 +74,7 @@ int startAlarm(int timeout)
     (void)signal(SIGALRM, alarmHandler);
     alarmEnabled = FALSE;
     alarm(timeout);
+    alarmEnabled = TRUE;
 
     return 0;
 }
@@ -121,7 +122,7 @@ enum state receiveUA(int fd, unsigned char A, unsigned char C)
     enum state STATE = START;
     char buf;
 
-    while (STATE != STOP && alarmEnabled == FALSE) {
+    while (STATE != STOP && alarmEnabled == TRUE) {
         int bytes = read(fd, &buf, 1);
 
         if (bytes > 0) {
@@ -184,7 +185,7 @@ int llopen(LinkLayer connectionParameters) {
     (void)signal(SIGALRM, alarmHandler);
 
     connectionParametersGlobal = connectionParameters;
-    fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY);
+    fd = open(connectionParameters.serialPort, O_RDWR | O_NOCTTY | O_NONBLOCK);
 
     if (fd < 0) {
         perror(connectionParameters.serialPort);
@@ -231,21 +232,31 @@ int llopen(LinkLayer connectionParameters) {
         enum state STATE;
 
         do {
-            /*if (alarmCount == 0 || alarmEnabled == TRUE) {*/
-            if (sendReadyToTransmitMsg(fd) < 0)
-            {
-                printf("ERROR: Failed to send SET!\n");
-                continue;
+            if (alarmEnabled == FALSE) {
+                if (sendReadyToTransmitMsg(fd) < 0)
+                {
+                    printf("ERROR: Failed to send SET!\n");
+                    continue;
+                }
+                startAlarm(connectionParameters.timeout);
             }
-            /*startAlarm(connectionParameters.timeout);
-            }*/
             // Read UA
             prepareUA();
             STATE = receiveUA(fd, A_UA, C_UA);
+
+            if(STATE != STOP){
+                //reset alarm
+                alarm(0);
+                alarmEnabled = FALSE;
+            }
         } while (alarmCount < connectionParameters.nRetransmissions && STATE != STOP);
 
         if (alarmCount < connectionParameters.nRetransmissions) {
             printf("Received UA from receiver successfully!\n");
+            //reset alarm
+            alarm(0);
+            alarmEnabled = FALSE;
+            alarmCount = 0;
         }
         else {
             printf("ERROR: Failed to receive UA from receiver!\n");
@@ -345,33 +356,36 @@ int prepareInfoFrame(const unsigned char *buf, int bufSize, unsigned char *infoF
 int readReceiverResponse() {
     unsigned char buf[5] = {0};
 
-    int readedBytes = read(fd, buf, 5);
-    int verifyReceiver;
+    while(alarmEnabled == TRUE){
+        int readedBytes = read(fd, buf, 5);
 
-    if (senderNumber == 0) {
-        verifyReceiver = 0x05 | 0x80; // RR (receiver ready)
-    }
-    else {
-        verifyReceiver = 0x05; // RR (receiver ready)
-    }
+        int verifyReceiver;
 
-    if (readedBytes != -1 && buf[0] == FLAG) {
-        if ((buf[2] != verifyReceiver) || (buf[3] != (buf[1] ^ buf[2]))) {
-            printf("\nERROR: Received message from llread() incorrectly!\n");
-
-            return -1; // INSUCCESS
+        if (senderNumber == 0) {
+            verifyReceiver = 0x05 | 0x80; // RR (receiver ready)
         }
         else {
-            alarmEnabled = FALSE;
+            verifyReceiver = 0x05; // RR (receiver ready)
+        }
 
-            if (senderNumber == 1)
-                senderNumber = 0;
-            else
-            {
-                senderNumber = 1;
+        if (readedBytes != -1 && buf[0] == FLAG) {
+            if ((buf[2] != verifyReceiver) || (buf[3] != (buf[1] ^ buf[2]))) {
+                printf("\nERROR: Received message from llread() incorrectly!\n");
+
+                return -1; // INSUCCESS
             }
+            else {
+                alarmEnabled = FALSE;
 
-            return 1; // SUCCESS
+                if (senderNumber == 1)
+                    senderNumber = 0;
+                else
+                {
+                    senderNumber = 1;
+                }
+
+                return 1; // SUCCESS
+            }
         }
     }
 
@@ -402,7 +416,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
     do {
         printf("[LOG] Writing Information Frame.\n");
-        if (timerReplaced == 0) {
+        if (alarmEnabled == FALSE) {
             int res = write(fd, infoFrame, totalBytes);
             //sleep(1);
             if (res < 0)
@@ -411,24 +425,34 @@ int llwrite(const unsigned char *buf, int bufSize) {
                 continue;
             }
             printf("Sent information frame successfully!\n");
-            timerReplaced = 1;
-            // startAlarm(timeout);
+            //timerReplaced = 1;
+            startAlarm(timeout);
         }
 
         // Read receiverResponse
         int res = readReceiverResponse();
-        switch (res) {
+        /*switch (res) {
         case -1:
             break;
         case 1:
             STOP = TRUE;
             printf("Received response from llread() successfully!\n");
+        }*/
+        if(res == 1){
+            STOP = TRUE;
+            printf("Received response from llread() successfully!\n");
+        } else if(res == -1) {
+            printf("ERROR: Couldn't resend info frame (timeout).\n");
+            alarm(0); 
+            alarmEnabled = FALSE;
         }
 
-        if (STOP == TRUE)
-            break;
         printf("alarmCount = %d\n", alarmCount);
-    } while (alarmCount < nRetransmissions && STOP == FALSE && alarmEnabled == TRUE);
+    } while (alarmCount < nRetransmissions && STOP == FALSE);
+
+    if(STOP == FALSE){
+        return -1;
+    }
 
     return 0;
 }
@@ -449,7 +473,7 @@ int receiveInfoFrame(unsigned char *packet, unsigned char *buf) {
     while (STATE != packSTOP) {
         if (read(fd, &ch, 1) < 0) {
 
-            printf("ERROR: Can't read from infoFrame!\n");
+            //printf("ERROR: Can't read from infoFrame!\n");
             continue;
         }
 
