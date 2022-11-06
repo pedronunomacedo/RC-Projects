@@ -359,20 +359,25 @@ int readReceiverResponse() {
     while(alarmEnabled == TRUE){
         int readedBytes = read(fd, buf, 5);
 
-        int verifyReceiver;
+        int verifyReceiverRR, verifyReceiverREJ;
 
         if (senderNumber == 0) {
-            verifyReceiver = 0x05 | 0x80; // RR (receiver ready)
+            verifyReceiverRR = 0x05 | 0x80; // RR (receiver ready)
+            verifyReceiverREJ = 0x01; // REJ (receiver reject)
         }
         else {
-            verifyReceiver = 0x05; // RR (receiver ready)
+            verifyReceiverRR = 0x05; // RR (receiver ready)
+            verifyReceiverREJ = 0x81; // REJ (receiver reject)
         }
 
         if (readedBytes != -1 && buf[0] == FLAG) {
-            if ((buf[2] != verifyReceiver) || (buf[3] != (buf[1] ^ buf[2]))) {
+            if ((buf[2] != verifyReceiverRR) || (buf[3] != (buf[1] ^ buf[2])) || (buf[2] != verifyReceiverREJ)) {
                 printf("\nERROR: Received message from llread() incorrectly!\n");
-
                 return -1; // INSUCCESS
+            }
+            else if (buf[2] == verifyReceiverREJ) {
+                printf("Received REJ!\n");
+                return -1;
             }
             else {
                 alarmEnabled = FALSE;
@@ -440,15 +445,15 @@ int llwrite(const unsigned char *buf, int bufSize) {
         }*/
         if(res == 1){
             STOP = TRUE;
+            alarm(0);
             printf("Received response from llread() successfully!\n");
         } else if(res == -1) {
-            printf("ERROR: Couldn't resend info frame (timeout).\n");
-            alarm(0); 
+            printf("ERROR: Couldn't resend info frame.\n");
+            alarm(0);
             alarmEnabled = FALSE;
         }
-
-        printf("alarmCount = %d\n", alarmCount);
     } while (alarmCount < nRetransmissions && STOP == FALSE);
+    alarmCount = 0;
 
     if(STOP == FALSE){
         return -1;
@@ -555,6 +560,7 @@ int llread(unsigned char *packet) {
         bcc2 ^= buf[i];
     }
 
+    bcc2Received = 0x01;
     if (bcc2 == bcc2Received) { // Create RR
         unsigned char respondRR[5];
 
@@ -584,7 +590,7 @@ int llread(unsigned char *packet) {
             return -1;
         }
 
-        return -2; // REJ sent
+        return numBytesRead; // REJ sent
     }
 
     for(int i=0;i<numBytesRead;i++)
@@ -599,7 +605,7 @@ int llread(unsigned char *packet) {
 int llclose() {
     printf("------------------- LLCLOSE -------------------\n");
 
-    int alarmCount = 0;
+    alarmCount = 0;
 
     if(role == LlRx) {
 
@@ -629,8 +635,9 @@ int llclose() {
                 buf[1] = 0x01;
                 buf[3] = buf[1]^buf[2];
 
-                while(alarmCount < nRetransmissions){
-
+                alarmEnabled = FALSE;
+                while(alarmCount < nRetransmissions) {
+                    printf("alarmEnabled = %d", alarmEnabled);
                     if(!alarmEnabled) {
                         printf("\nDISC message sent, %d bytes written\n", 5);
                         write(fd, buf, 5);
@@ -680,11 +687,11 @@ int llclose() {
 
         alarmCount = 0;
         while(alarmCount < nRetransmissions) {
-
+            
             if(!alarmEnabled) {
-                
                 int bytes = write(fd, buf, 5);
                 printf("\nDISC message sent, %d bytes written\n", bytes);
+                printf("alarmCount = %d", alarmCount);
                 startAlarm(timeout);
             }
 

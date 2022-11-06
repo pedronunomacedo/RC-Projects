@@ -132,6 +132,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 printf("ERROR: Failed to write data packet to llwrite!\n");
                 return;
             }
+            sleep(1);
             totalBytesRead += numBytesRead;
             //printf("total = %d\n", totalBytesRead);
         }
@@ -165,12 +166,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         int totalBytesRead = 0, totalFrames = 0;
         int bytesread = 0;
         while((bytesread = llread(readInformation)) > 0) { // data + BCC2
+            // Processar quando é REJ!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             totalFrames++;
-
-            /*printf("PACKET READ: ");
-            for(int i=0;i<bytesread;i++)
-                printf("%x ", readInformation[i]);
-            printf("\n");*/
 
             // Choose between writting or closing on the file based on frame received
             if (readInformation[0] == 0x01){
@@ -188,15 +185,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
             else if(readInformation[0] == 0x03){
                 printf("Received control packet END on application_layer!\n");
                 break;
-            } 
-
-            //sleep(2);
-
-            //printf("\n===%d - %d -> %d===\n", bytesread, readInformation[1], readInformation[2] * 255 + readInformation[3]);
-            //printf("total = %d\n", totalBytesRead);
+            }
         }
-        //printf("\n\n\n\ntotalBytesRead: %d\n", totalBytesRead); // 11548 -> 10968
-        //printf("totalFrames: %d\n", totalFrames);
 
         fclose(fileCreating);
     }
