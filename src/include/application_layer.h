@@ -9,6 +9,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <time.h>
 
 // Application layer main function.
 // Arguments:

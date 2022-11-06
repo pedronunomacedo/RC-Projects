@@ -4,6 +4,10 @@
 #define BUF_SIZE 256
 #define BUF_SIZE2 400
 
+// Statistics variables
+int totalFrames = 0;
+
+
 int prepareControlPacket(unsigned char *controlPacket, int bufSize, unsigned char C, int fileSize, const char *filename) {
     controlPacket[0] = C;
     controlPacket[1] = 0;
@@ -87,6 +91,11 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     stat(filename, &st);
     int fileSize = st.st_size;
 
+    clock_t start, end;
+    int statistics = 1;
+    int totalBytes = 0;
+
+    start = clock();
     if (resTx == 0) {
         // 1. Create controlPacket
         // 2. Call the llwrite to create the info frame
@@ -101,11 +110,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
 
         unsigned char dataPacket[BUF_SIZE], dataBytes[BUF_SIZE];
         int dataPacketSize = 0;
-
         FILE* filePtr;
-
         int numSequence = 0;
-        //int index = 0, packetSize = 100;
 
         filePtr = fopen(filename, "rb");
         if (filePtr == NULL) {
@@ -114,30 +120,23 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         }
 
         // Start reading the file
-
-        int totalBytesRead = 0;
         int numBytesRead = 0;
         while ((numBytesRead = fread(dataBytes, (size_t) 1, (size_t) 100, filePtr)) > 0) {
+            totalFrames++;
             printf("[LOG] Reading from file\n");
-            //printf("\n===%d - %d===\n", numBytesRead, i);
+
             // Create data packet
             int dataPacketSize = prepareDataPacket(dataBytes, dataPacket, numSequence++, numBytesRead);
-
-            /*printf("Initial PACKET: ");
-            for(int i=0;i<dataPacketSize;i++)
-                printf("%x ", dataPacket[i]);
-            printf("\n");*/
 
             if (llwrite(dataPacket, dataPacketSize) < 0) {
                 printf("ERROR: Failed to write data packet to llwrite!\n");
                 return;
             }
-            // sleep(1);
-            totalBytesRead += numBytesRead;
-            //printf("total = %d\n", totalBytesRead);
+
+            totalBytes += numBytesRead;
         }
 
-        // Create conyrol packet end
+        // Create control packet end
         int controlPacketSizeEnd = prepareControlPacket(controlPacket, BUF_SIZE, 3, fileSize, filename);
 
         if (llwrite(controlPacket, controlPacketSizeEnd) < 0) {
@@ -163,15 +162,13 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 printf("ERROR: Couldn't read control packet!\n");
         }
 
-        int totalBytesRead = 0, totalFrames = 0;
-        int bytesread = 0;
-        while((bytesread = llread(readInformation)) > 0) { // data + BCC2
-            // Processar quando é REJ!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-            totalFrames++;
 
+        int bytesread = 0, totalBytesRead = 0;
+
+        while((bytesread = llread(readInformation)) > 0) { // data + BCC2
             // Choose between writting or closing on the file based on frame received
             if (readInformation[0] == 0x01){
-                totalBytesRead += bytesread-5;
+                totalBytesRead += (bytesread - 5);
                 unsigned char fileData[bytesread - 5];
 
                 for (int i = 4; i < bytesread - 1; i++) {
@@ -179,7 +176,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 }
 
                 for (int i = 0; i < (bytesread - 5); i++) {
-                fputc(fileData[i], fileCreating);
+                    fputc(fileData[i], fileCreating);
                 }
             } 
             else if(readInformation[0] == 0x03){
@@ -194,10 +191,10 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         printf("ERROR: Invalid role!\n");
         exit(1);
     }
+    end = clock();
+    float duration = ((float)end - start) / CLOCKS_PER_SEC;
 
     printf("\n\n-------------  Phase 3 : Close connection --------------------\n\n");
 
-    //sleep(5);
-
-    llclose();
+    llclose(&statistics, totalFrames, totalBytes, duration);
 }

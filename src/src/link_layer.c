@@ -53,6 +53,11 @@ int controlReceiver;
 int fd; // serial file descriptor
 LinkLayer connectionParametersGlobal;
 
+// statitistics variables
+int numFramesRetransmitted = 0;
+int numTimeOuts = 0;
+
+
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
 
@@ -60,8 +65,9 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 
 // Alarm function handler
-void alarmHandler(int signal)
-{
+void alarmHandler(int signal) {
+    if (alarmCount == 0) numFramesRetransmitted++;
+    numTimeOuts++;
     alarmEnabled = FALSE;
     alarmCount++;
 
@@ -69,8 +75,7 @@ void alarmHandler(int signal)
 }
 
 // Starts the alarm
-int startAlarm(int timeout)
-{
+int startAlarm(int timeout) {
     // Set alarm function handler
     (void)signal(SIGALRM, alarmHandler);
     alarmEnabled = FALSE;
@@ -80,8 +85,7 @@ int startAlarm(int timeout)
     return 0;
 }
 
-void prepareSet()
-{
+void prepareSet(){
     SET[0] = FLAG;
     SET[1] = A_UA;
     SET[2] = C_SET;
@@ -231,11 +235,10 @@ int llopen(LinkLayer connectionParameters) {
     case LlTx:
         alarmCount = 0;
         enum state STATE;
-
+        
         do {
             if (alarmEnabled == FALSE) {
-                if (sendReadyToTransmitMsg(fd) < 0)
-                {
+                if (sendReadyToTransmitMsg(fd) < 0) {
                     printf("ERROR: Failed to send SET!\n");
                     continue;
                 }
@@ -275,7 +278,7 @@ int llopen(LinkLayer connectionParameters) {
         break;
     default:
         printf("ERROR: Unknown role!\n");
-        llclose();
+        llclose(0, 0, 0, 0);
     }
 
     return fd;
@@ -360,10 +363,6 @@ int readReceiverResponse() {
     while(alarmEnabled == TRUE){
         int readedBytes = read(fd, buf, 5);
 
-        for (int i = 0; i < readedBytes; i++) {
-            printf("MessageReceived[%d]: %x\n", i, buf[i]);
-        }
-
         int verifyReceiverRR, verifyReceiverREJ;
 
         if (senderNumber == 0) {
@@ -376,7 +375,7 @@ int readReceiverResponse() {
         }
 
         if (readedBytes != -1 && buf[0] == FLAG) {
-            if ((buf[2] == verifyReceiverRR) && (buf[3] == (buf[1] ^ buf[2]))) { // Entra sempre aqui por causa do buf[2] != verifyReceiverREJ
+            if ((buf[2] == verifyReceiverRR) && (buf[3] == (buf[1] ^ buf[2]))) {
                  alarmEnabled = FALSE;
 
                 if (senderNumber == 1)
@@ -393,7 +392,7 @@ int readReceiverResponse() {
                 return -2;
             }
             else {
-               printf("\nERROR: Received message from llread() incorrectly!\n");
+                printf("\nERROR: Received message from llread() incorrectly!\n");
                 return -1; // INSUCCESS
             }
         }
@@ -423,7 +422,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
     int STOP = FALSE;
     int timerReplaced = 0;
-
+    
     do {
         printf("[LOG] Writing Information Frame.\n");
         if (alarmEnabled == FALSE) {
@@ -433,7 +432,7 @@ int llwrite(const unsigned char *buf, int bufSize) {
                 continue;
             }
             printf("Sent information frame successfully!\n");
-            //timerReplaced = 1;
+            
             startAlarm(timeout);
         }
 
@@ -603,10 +602,8 @@ int llread(unsigned char *packet) {
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
-int llclose() {
+int llclose(int *statistics, int totalFrames, int totalBytes, float duration) {
     alarmCount = 0;
-
-    printf("\n------------------------------LLCLOSE------------------------------\n\n");
 
     if(role == LlRx){
 
@@ -634,7 +631,7 @@ int llclose() {
                 printf("\nDISC message received. Responding now.\n");
                 
                 buf[1] = 0x01;
-                buf[3] = buf[1]^buf[2];
+                buf[3] = buf[1] ^ buf[2];
 
                 while(alarmCount < nRetransmissions){
 
@@ -657,7 +654,7 @@ int llclose() {
                             printf("\nUA correctly received: 0x%02x%02x%02x%02x%02x\n", parcels[0], parcels[1], parcels[2], parcels[3], parcels[4]);
                             alarmEnabled = FALSE;
                             close(fd);
-                            break;
+                            return 1;
                         }
                     }
 
@@ -674,7 +671,7 @@ int llclose() {
         }
 
     }
-    else{
+    else {
         alarmCount = 0;
 
         unsigned char buf[6] = {0}, parcels[6] = {0};
@@ -726,8 +723,7 @@ int llclose() {
                     close(fd);
 
                     printf("\nUA message sent, %d bytes written.\n\nI'm shutting off now, bye bye!\n", bytes);
-                    return 1;
-
+                    break;
                 }
             }
 
@@ -738,8 +734,15 @@ int llclose() {
             close(fd);
             return -1;
         }
+    }
 
-
+    if (statistics) {
+        printf("\n-------- STATISTICS --------\n");
+        printf("Number of total frames sent: %d\n", totalFrames);
+        printf("Number of frames retransmitted: %d\n", numFramesRetransmitted);
+        printf("Total number of bytes: %d\n", totalBytes);
+        printf("Number of timeouts: %d\n", numTimeOuts);
+        printf("Duration of the program: %f seconds\n", duration);
     }
 
     return 1;
