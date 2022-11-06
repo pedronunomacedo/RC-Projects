@@ -119,7 +119,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         int numBytesRead = 0;
         while ((numBytesRead = fread(dataBytes, (size_t) 1, (size_t) 100, filePtr)) > 0) {
             printf("[LOG] Reading from file\n");
-            // printf("\n===%d - %d===\n", numBytesRead, numSequence);
+            //printf("\n===%d - %d===\n", numBytesRead, i);
             // Create data packet
             int dataPacketSize = prepareDataPacket(dataBytes, dataPacket, numSequence++, numBytesRead);
 
@@ -132,7 +132,7 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 printf("ERROR: Failed to write data packet to llwrite!\n");
                 return;
             }
-            sleep(1);
+            // sleep(1);
             totalBytesRead += numBytesRead;
             //printf("total = %d\n", totalBytesRead);
         }

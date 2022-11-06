@@ -9,6 +9,7 @@
 #include <termios.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <errno.h>
 
 int temp = 0;
 
@@ -359,6 +360,10 @@ int readReceiverResponse() {
     while(alarmEnabled == TRUE){
         int readedBytes = read(fd, buf, 5);
 
+        for (int i = 0; i < readedBytes; i++) {
+            printf("MessageReceived[%d]: %x\n", i, buf[i]);
+        }
+
         int verifyReceiverRR, verifyReceiverREJ;
 
         if (senderNumber == 0) {
@@ -371,8 +376,9 @@ int readReceiverResponse() {
         }
 
         if (readedBytes != -1 && buf[0] == FLAG) {
-            if ((buf[2] != verifyReceiverRR) || (buf[3] != (buf[1] ^ buf[2])) || (buf[2] != verifyReceiverREJ)) {
+            if ((buf[2] != verifyReceiverRR) || (buf[3] != (buf[1] ^ buf[2]))) { // Entra sempre aqui por causa do buf[2] != verifyReceiverREJ
                 printf("\nERROR: Received message from llread() incorrectly!\n");
+                alarmCount--;
                 return -1; // INSUCCESS
             }
             else if (buf[2] == verifyReceiverREJ) {
@@ -423,9 +429,8 @@ int llwrite(const unsigned char *buf, int bufSize) {
         printf("[LOG] Writing Information Frame.\n");
         if (alarmEnabled == FALSE) {
             int res = write(fd, infoFrame, totalBytes);
-            //sleep(1);
-            if (res < 0)
-            {
+            sleep(1);
+            if (res < 0) {
                 printf("ERROR: Failed to send infoFrame!\n");
                 continue;
             }
@@ -436,23 +441,18 @@ int llwrite(const unsigned char *buf, int bufSize) {
 
         // Read receiverResponse
         int res = readReceiverResponse();
-        /*switch (res) {
-        case -1:
-            break;
-        case 1:
-            STOP = TRUE;
-            printf("Received response from llread() successfully!\n");
-        }*/
-        if(res == 1){
+        if(res == 1) {
             STOP = TRUE;
             alarm(0);
             printf("Received response from llread() successfully!\n");
-        } else if(res == -1) {
+        } else if (res == -1) {
             printf("ERROR: Couldn't resend info frame.\n");
             alarm(0);
             alarmEnabled = FALSE;
+            alarmCount++;
         }
     } while (alarmCount < nRetransmissions && STOP == FALSE);
+
     alarmCount = 0;
 
     if(STOP == FALSE){
@@ -560,7 +560,6 @@ int llread(unsigned char *packet) {
         bcc2 ^= buf[i];
     }
 
-    bcc2Received = 0x01;
     if (bcc2 == bcc2Received) { // Create RR
         unsigned char respondRR[5];
 
@@ -603,57 +602,56 @@ int llread(unsigned char *packet) {
 // LLCLOSE
 ////////////////////////////////////////////////
 int llclose() {
-    printf("------------------- LLCLOSE -------------------\n");
-
     alarmCount = 0;
 
-    if(role == LlRx) {
+    printf("\n------------------------------LLCLOSE------------------------------\n\n");
+
+    if(role == LlRx){
 
         unsigned char buf[6] = {0}, parcels[6] = {0};
-        unsigned char STOP = 0;
-        //unsigned char UA = 0;
+        unsigned char STOP = FALSE, UA = 0;
 
         buf[0] = 0x7E;
         buf[1] = 0x03;
         buf[2] = 0x0B;
-        buf[3] = buf[1]^buf[2];
+        buf[3] = buf[1] ^ buf[2];
         buf[4] = 0x7E;
         buf[5] = '\0';
 
 
-        while(!STOP) {
+        while(STOP == FALSE) {
             int result = read(fd, parcels, 5);
+
+            if (result < 0) {
+                continue;
+            }
             
             parcels[5] = '\0';
 
-            if(result==-1){
-                continue;
-            }
-            else if(strcasecmp(buf, parcels) == 0) {
+            if (strcasecmp(buf, parcels) == 0){
                 printf("\nDISC message received. Responding now.\n");
                 
                 buf[1] = 0x01;
                 buf[3] = buf[1]^buf[2];
 
-                alarmEnabled = FALSE;
-                while(alarmCount < nRetransmissions) {
-                    printf("alarmEnabled = %d", alarmEnabled);
-                    if(!alarmEnabled) {
+                while(alarmCount < nRetransmissions){
+
+                    if(!alarmEnabled){
                         printf("\nDISC message sent, %d bytes written\n", 5);
                         write(fd, buf, 5);
                         startAlarm(timeout);
                     }
                     
                     int result = read(fd, parcels, 5);
-                    if(result != -1 && parcels != 0 && parcels[0]==0x7E) {
+                    if(result != -1 && parcels != 0 && parcels[0]==0x7E){
                         //se o UA estiver errado 
-                        if(parcels[2] != 0x07 || (parcels[3] != (parcels[1]^parcels[2]))) {
+                        if(parcels[2] != 0x07 || (parcels[3] != (parcels[1]^parcels[2]))){
                             printf("\nUA not correct: 0x%02x%02x%02x%02x%02x\n", parcels[0], parcels[1], parcels[2], parcels[3], parcels[4]);
                             alarmEnabled = FALSE;
                             continue;
                         }
                         
-                        else {   
+                        else{   
                             printf("\nUA correctly received: 0x%02x%02x%02x%02x%02x\n", parcels[0], parcels[1], parcels[2], parcels[3], parcels[4]);
                             alarmEnabled = FALSE;
                             close(fd);
@@ -663,7 +661,7 @@ int llclose() {
 
                 }
 
-                if(alarmCount >= nRetransmissions) {
+                if(alarmCount >= nRetransmissions){
                     printf("\nAlarm limit reached, DISC message not sent\n");
                     return -1;
                 }
@@ -674,44 +672,46 @@ int llclose() {
         }
 
     }
-    else { // Tx
+    else{
+        alarmCount = 0;
+
         unsigned char buf[6] = {0}, parcels[6] = {0};
 
-        // Create DISC message
         buf[0] = 0x7E;
         buf[1] = 0x03;
         buf[2] = 0x0B;
         buf[3] = buf[1]^buf[2];
         buf[4] = 0x7E;
-        buf[5] = '\0'; // To use string compare
+        buf[5] = '\0'; //assim posso usar o strcmp
 
-        alarmCount = 0;
-        while(alarmCount < nRetransmissions) {
-            
+        while(alarmCount < nRetransmissions){
+
             if(!alarmEnabled) {
+                
                 int bytes = write(fd, buf, 5);
                 printf("\nDISC message sent, %d bytes written\n", bytes);
-                printf("alarmCount = %d", alarmCount);
                 startAlarm(timeout);
             }
-
-            //sleep(2);
             
             int result = read(fd, parcels, 5);
 
+            if (result < 0) {
+                continue;
+            }
+
             buf[1] = 0x01;
-            buf[3] = buf[1]^buf[2];
+            buf[3] = buf[1] ^ buf[2];
             parcels[5] = '\0';
 
-            if(result != -1 && parcels!= 0 && parcels[0]==0x7E) {
+            if(result != -1 && parcels != 0 && parcels[0]==0x7E){
                 //se o DISC estiver errado 
-                if(strcasecmp(buf, parcels) != 0) {
+                if(strcasecmp(buf, parcels) != 0){
                     printf("\nDISC not correct: 0x%02x%02x%02x%02x%02x\n", parcels[0], parcels[1], parcels[2], parcels[3], parcels[4]);
                     alarmEnabled = FALSE;
                     continue;
                 }
                 
-                else {   
+                else{   
                     printf("\nDISC correctly received: 0x%02x%02x%02x%02x%02x\n", parcels[0], parcels[1], parcels[2], parcels[3], parcels[4]);
                     alarmEnabled = FALSE;
                     
@@ -723,7 +723,7 @@ int llclose() {
 
                     close(fd);
 
-                    printf("\nUA message sent, %d bytes written.\n\nClosing...\n", bytes);
+                    printf("\nUA message sent, %d bytes written.\n\nI'm shutting off now, bye bye!\n", bytes);
                     return 1;
 
                 }
@@ -731,11 +731,13 @@ int llclose() {
 
         }
 
-        if(alarmCount >= nRetransmissions) {
+        if(alarmCount >= nRetransmissions){
             printf("\nAlarm limit reached, DISC message not sent\n");
             close(fd);
             return -1;
         }
+
+
     }
 
     return 1;
