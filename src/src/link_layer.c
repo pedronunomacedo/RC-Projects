@@ -376,17 +376,8 @@ int readReceiverResponse() {
         }
 
         if (readedBytes != -1 && buf[0] == FLAG) {
-            if ((buf[2] != verifyReceiverRR) || (buf[3] != (buf[1] ^ buf[2]))) { // Entra sempre aqui por causa do buf[2] != verifyReceiverREJ
-                printf("\nERROR: Received message from llread() incorrectly!\n");
-                alarmCount--;
-                return -1; // INSUCCESS
-            }
-            else if (buf[2] == verifyReceiverREJ) {
-                printf("Received REJ!\n");
-                return -1;
-            }
-            else {
-                alarmEnabled = FALSE;
+            if ((buf[2] == verifyReceiverRR) && (buf[3] == (buf[1] ^ buf[2]))) { // Entra sempre aqui por causa do buf[2] != verifyReceiverREJ
+                 alarmEnabled = FALSE;
 
                 if (senderNumber == 1)
                     senderNumber = 0;
@@ -396,6 +387,14 @@ int readReceiverResponse() {
                 }
 
                 return 1; // SUCCESS
+            }
+            else if ((buf[2] == verifyReceiverREJ) && (buf[3] == (buf[1] ^ buf[2]))) {
+                printf("Received REJ!\n");
+                return -2;
+            }
+            else {
+               printf("\nERROR: Received message from llread() incorrectly!\n");
+                return -1; // INSUCCESS
             }
         }
     }
@@ -429,7 +428,6 @@ int llwrite(const unsigned char *buf, int bufSize) {
         printf("[LOG] Writing Information Frame.\n");
         if (alarmEnabled == FALSE) {
             int res = write(fd, infoFrame, totalBytes);
-            sleep(1);
             if (res < 0) {
                 printf("ERROR: Failed to send infoFrame!\n");
                 continue;
@@ -447,6 +445,10 @@ int llwrite(const unsigned char *buf, int bufSize) {
             printf("Received response from llread() successfully!\n");
         } else if (res == -1) {
             printf("ERROR: Couldn't resend info frame.\n");
+            alarm(0);
+            alarmEnabled = FALSE;
+        } else if(res == -2) {
+            printf("Received REJ response.\n");
             alarm(0);
             alarmEnabled = FALSE;
             alarmCount++;
