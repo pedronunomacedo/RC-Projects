@@ -14,7 +14,6 @@
 #define PATH_REGEX "%*[^/]//%*[^/]%s"
 #define USER_REGEX "%*[^/]//%[^:]"
 #define PASSWORD_REGEX "%*[^/]//%*[^:]:%[^@]"
-#define FILENAME_REGEX "%[^\\]+$" // [^\\]+$
 
 struct arguments {
     char host[MAX_BUF_SIZE];
@@ -48,8 +47,6 @@ int main (int argc, char *argv[]) {
     struct arguments args;
     
     getArguments(argv[1], &args);
-
-
 
     return 0;
 }
