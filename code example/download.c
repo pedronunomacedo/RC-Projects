@@ -10,6 +10,8 @@
 #include <regex.h>
 #include "./macros.h"
 #include "./getip.c"
+#include "./clientTCP.c"
+#include "./auxFunctions.c"
 
 #define HOST_REGEX_WHITH_USER_PASS "%*[^/]//%*[^@]@%[^/]"
 #define PATH_REGEX_WHITH_USER_PASS "%*[^/]//%*[^/]%s"
@@ -19,126 +21,124 @@
 #define HOST_REGEX "%*[^/]//%[^/]"
 #define PATH_REGEX "%*[^/]//%*[^/]%s"
 
-char *PASSIVEMODE_PARAMETERS[] = {
-    "%*[^(](%[^,]", 
-    "%*[^(](%*[^,],%[^,]", 
-    "%*[^(](%*[^,],%*[^,],%[^,]", 
-    "%*[^(](%*[^,],%*[^,],%*[^,],%[^,]", 
-    "%*[^(](%*[^,],%*[^,],%*[^,],%*[^,],%[^,]", 
-    "%*[^(](%*[^,],%*[^,],%*[^,],%*[^,],%*[^,],%[^)]"
-};
-
-#define GET_PASSIVE_MODE_PARAMETER(n) PASSIVEMODE_PARAMETERS[n - 1]
+typedef struct ftp {
+    int control_socket_fd; // file descriptor to control socket
+    int data_socket_fd; // file descriptor to data socket
+} ftp;
 
 
-struct arguments {
-    char host[MAX_BUF_SIZE];
-    char path[MAX_BUF_SIZE];
-    char user[MAX_BUF_SIZE];
-    char pass[MAX_BUF_SIZE];
-    char filename[MAX_BUF_SIZE];
-};
-
-void getArguments(char *argument, struct arguments *args) {
+void getArguments(char *argument, struct url *URL) {
     char hasArroba[MAX_BUF_SIZE];
 
     if (strchr(argument, '@') == NULL) { // No USER or PASSWORD in argument
-        sscanf(argument, HOST_REGEX, args->host);
-        sscanf(argument, PATH_REGEX, args->path);
-        strcpy(args->filename, strrchr(args->path, '/') + 1);
-        strcpy(args->user, "anonymous");
-        strcpy(args->pass, "pass");
+        sscanf(argument, HOST_REGEX, URL->host);
+        sscanf(argument, PATH_REGEX, URL->path);
+        strcpy(URL->filename, strrchr(URL->path, '/') + 1);
+        strcpy(URL->user, "anonymous");
+        strcpy(URL->pass, "");
 
-        printf("Hostname: %s\n", args->host);
-        printf("Path: %s\n", args->path);
-        printf("Filename: %s\n", args->filename);
+        printf("Hostname: %s\n", URL->host);
+        printf("Path: %s\n", URL->path);
+        printf("User: anonymous\n");
+        printf("Password: %s\n", URL->pass);
+        printf("Filename: %s\n", URL->filename);
     }
     else {
-        sscanf(argument, HOST_REGEX_WHITH_USER_PASS, args->host);
-        sscanf(argument, PATH_REGEX_WHITH_USER_PASS, args->path);
-        sscanf(argument, USER_REGEX, args->user);
-        sscanf(argument, PASSWORD_REGEX, args->pass);
-        strcpy(args->filename, strrchr(args->path, '/') + 1);
+        sscanf(argument, HOST_REGEX_WHITH_USER_PASS, URL->host);
+        sscanf(argument, PATH_REGEX_WHITH_USER_PASS, URL->path);
+        sscanf(argument, USER_REGEX, URL->user);
+        sscanf(argument, PASSWORD_REGEX, URL->pass);
+        strcpy(URL->filename, strrchr(URL->path, '/') + 1);
 
-        printf("Hostname: %s\n", args->host);
-        printf("Path: %s\n", args->path);
-        printf("User: %s\n", args->user);
-        printf("Password: %s\n", args->pass);
-        printf("Filename: %s\n", args->filename);
-    }    
+        printf("Configurations of the link typed!\n");
+        printf("Hostname: %s\n", URL->host);
+        printf("Path: %s\n", URL->path);
+        printf("User: %s\n", URL->user);
+        printf("Password: %s\n", URL->pass);
+        printf("Filename: %s\n\n", URL->filename);
+    }
 }
 
+
+void getFileFromSeverFTP(struct url *URL) {
+    // 1. Get the internet address using the node and service provideded in the function parameters (getaddrinfo(const char *restrict node, const char *restrict service, const struct addrinfo *restrict hints, struct addrinfo **restrict res)).
+    // 2. Get the node and service names, possibly truncated to fit the specified buffer lengths (genameinfo(const struct sockaddr *restrict addr, socklen_t addrlen, char *restrict host, socklen_t hostlen, char *restrict serv, socklen_t servlen, int flags))
+    // 3. After executing the function in the previous step, you will get the IP (in the host field). You can see this flag in a numeric form if you put the flag NI_NUMERICHOST in the flags field on the function provided in the previous step.
+
+    int data_sockfd, sockfd;
+	char address[MAX_BUF_SIZE];
+	int bytes;
+	struct addrinfo hints, *infoptr;
+
+	bzero(&hints, sizeof(hints));
+	hints.ai_family = AF_INET; // AF_INET means IPv4 only addresses
+
+	int result = getaddrinfo(URL->host, NULL, &hints, &infoptr);
+	if (result) {
+		printf("ERROR: getaddrinfo() failed!\n");
+		exit(1);
+	}
+
+    struct hostent *h;
+    char* ip = getip(URL->host, h); // Get the ip address of the provided host // IP Address: 193.137.29.15
+
+    // Create socket and connect
+    sockfd = createSocketAndConnect(ip, 21);
+
+    // Get string from the server
+    if (clientTCP(ip) < 0) return;
+
+}
+
+
 int main (int argc, char *argv[]) {
-    
     if (argc != 2) {
         printf("Usage: ./download <FILE>\n");
         exit(0);
     }
 
-    struct arguments args;
+    struct url URL;
+    struct ftp FTP;
+    char *serverName, serverIP[16];
     
-    getArguments(argv[1], &args);
+    // 1) Parse the link received and divide it into host, path, user, password and filename.
+    getArguments(argv[1], &URL);
 
-    // struct hostent *h;
-    // args. = getip(args.host, h);
+    // 2) Get the IP from the DNS
+    getIPfromDNS(URL.host, serverIP);
 
-    // int sockfd;
-    // struct sockaddr_in server_addr;
-    // char buf[] = "Mensagem de teste na travessia da pilha TCP/IP\n";
-    // size_t bytes;
+    // 3) Establish the connection
+    FTP.control_socket_fd = establishConnection(serverIP);
 
-    // /*server address handling*/
-    // bzero((char *) &server_addr, sizeof(server_addr));
-    // server_addr.sin_family = AF_INET;
-    // server_addr.sin_addr.s_addr = inet_addr(h);    /*32 bit Internet address network byte ordered*/
-    // server_addr.sin_port = htons(SERVER_PORT);        /*server TCP port must be network byte ordered */
+    char response[MAX_BUF_SIZE];
+    receiveFromControlSocket(FTP.control_socket_fd, response, MAX_BUF_SIZE);
 
-    // /*open a TCP socket*/
-    // if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-    //     perror("socket()");
-    //     exit(-1);
-    // }
-    // /*connect to the server*/
-    // if (connect(sockfd,
-    //             (struct sockaddr *) &server_addr,
-    //             sizeof(server_addr)) < 0) {
-    //     perror("connect()");
-    //     exit(-1);
-    // }
-    // /*send a string to the server*/
-    // bytes = write(sockfd, buf, strlen(buf));
-    // if (bytes > 0)
-    //     printf("Bytes escritos %ld\n", bytes);
-    // else {
-    //     perror("write()");
-    //     exit(-1);
-    // }
+    // 4) Send instructions to the server
+    if (loginControlConnection(FTP.control_socket_fd, &URL) < 0) {
+        printf("ERROR: Login failed!\n");
+        return -1;
+    }
 
-    // if (close(sockfd)<0) {
-    //     perror("close()");
-    //     exit(-1);
-    // }
+    if ((FTP.data_socket_fd = getServerPort(FTP.control_socket_fd)) < 0) {
+        printf("ERROR: Getting server port failed!\n");
+        return -1;
+    }
 
+    // send retr <filePath> command
+    if (sendretr(FTP.control_socket_fd, URL.path) < 0) {
+        printf("ERROR: Ssending command retr failed!\n");
+        return -1;
+    }
 
-    // Down here is for later! ----------------------------------------------------------------
-
-    // char* buf = "227 Entering Passive Mode (193,137,29,15,229,46).";
-    // char result1[MAX_BUF_SIZE], result2[MAX_BUF_SIZE], result3[MAX_BUF_SIZE], result4[MAX_BUF_SIZE], result5[MAX_BUF_SIZE],result6[MAX_BUF_SIZE];
-    // sscanf(buf, GET_PASSIVE_MODE_PARAMETER(1), result1);
-    // sscanf(buf, GET_PASSIVE_MODE_PARAMETER(2), result2);
-    // sscanf(buf, GET_PASSIVE_MODE_PARAMETER(3), result3);
-    // sscanf(buf, GET_PASSIVE_MODE_PARAMETER(4), result4);
-    // sscanf(buf, GET_PASSIVE_MODE_PARAMETER(5), result5);
-    // sscanf(buf, GET_PASSIVE_MODE_PARAMETER(6), result6);
-
-    // printf("1st param: %s\n", result1);
-    // printf("2nd param: %s\n", result2);
-    // printf("3rd param: %s\n", result3);
-    // printf("4th param: %s\n", result4);
-    // printf("5th param: %s\n", result5);
-    // printf("6th param: %s\n", result6);
-
-    // End the later here! ----------------------------------------------------------------
+    if (downloadFileFromServer(FTP.data_socket_fd, FTP.control_socket_fd, URL.filename) < 0) {
+        printf("ERROR: Download file '%s' from server failed!\n", URL.filename);
+        return -1;
+    }
+    
+    if (closeConnectionSocket(FTP.control_socket_fd) < 0) {
+        printf("ERROR: Could not close connection socket! \n");
+        return -1;
+    }
 
     return 0;
 }

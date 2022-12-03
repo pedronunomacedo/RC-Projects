@@ -1,2 +1,15 @@
-*.out
-.git
+*.o
+*.pyc
+*.class
+/bin
+/out
+/target
+.log
+.lock
+.tmp
+.DS_Store
+Thumbs.db
+.idea/workspace.xml
+/node_modules
+/packages
+.vscode/
