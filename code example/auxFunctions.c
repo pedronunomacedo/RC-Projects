@@ -43,8 +43,6 @@ void getIPfromDNS(char *serverName, char *serverIP) {
     printf("Host name  : %s\n", host->h_name);
 
     printf("IP Address : %s\n", ip); // A numeric host is in the following format: __:__:__:__ (example: 193.137.29.15)
-    printf("Press ENTER to continue...\n");
-	getc(stdin);
 }
 
 void writeOnSocket(int socket, char *stringToWrite) {
@@ -82,7 +80,7 @@ int receiveFromControlSocket(int socket, char *string, int size) {
         memset(string, 0, size);
         fgets(string, size, fp); // reads one line from the server
         printf("%s", string);
-    } while (!('1' <= string[0] && string[0] <= '5') || string[3] != ' '); // Continues reading until the line received has no HTTP code
+    } while (!('1' <= string[0] && string[0] <= '5') || string[3] != ' '); // Continues reading until the line received has a valid HTTP code
 
     return 0;
 }
@@ -238,24 +236,25 @@ int downloadFileFromServer(int data_socket, int control_socket, char *filename) 
     }
 
     char fileBuffer[MAX_BUF_SIZE];
-    int bytesRead = 0;
+    int bytesRead = 0, fileBytes = 0, packetNumber = 0;
 
-    printf("Starting reading the file packets from the server...\n");
+    printf("\n\n\n\n----- Reading file from the server ----\n");
     while ((bytesRead = read(data_socket, fileBuffer, MAX_BUF_SIZE)) > 0) {
-        printf("Readed %d bytes from file %s! \n", bytesRead, filename);
         if (bytesRead < 0) {
             printf("ERROR: Could not read from file %s of the server! \n", filename);
             return -1;
         }
+        packetNumber++;
+        printf("packet %d - Readed %d bytes from file %s! \n", packetNumber, bytesRead, filename);
+        fileBytes += bytesRead;
 
         if (fwrite(fileBuffer, bytesRead, 1, fileCreated) < 0) {
             printf("ERROR: Could not write to recent file created! \n");
             return -1;
         }
     }
-    printf("End reading the file packets from the server (%d)!\n", bytesRead);
     
-    printf("Download file %s from server successfully! \n", filename);
+    printf("Download file %s from server successfully of size %d bytes! \n\n\n", filename, fileBytes);
 
     // Close the created file and the data socket port
     if (fclose(fileCreated) < 0) {
