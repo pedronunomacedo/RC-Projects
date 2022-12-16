@@ -130,7 +130,6 @@ int sendCommandInterpretResponse(int socket, char *cmdHeader, char *cmdBody, cha
     while (1) {
         receiveFromControlSocket(socket, response, responseLength);
         code = response[0] - '0'; // Turns the first character of the string response into an integer number substracting the ASCII code of the number 0
-        
         switch (code) {
             case 1:
                 // expecting another reply
@@ -168,7 +167,7 @@ int loginControlConnection(int socket, struct url *URL) {
     char response[MAX_BUF_SIZE];
 
     int rtr = sendCommandInterpretResponse(socket, "user", URL->user, response, MAX_BUF_SIZE, 0);
-    if (rtr == 3) {
+    if (rtr == 2 || rtr == 3) {
         printf("Sent username!\n\n");
     }
     else {

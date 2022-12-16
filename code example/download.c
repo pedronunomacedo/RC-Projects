@@ -35,7 +35,7 @@ void getArguments(char *argument, struct url *URL) {
         sscanf(argument, PATH_REGEX, URL->path);
         strcpy(URL->filename, strrchr(URL->path, '/') + 1);
         strcpy(URL->user, "anonymous");
-        strcpy(URL->pass, "");
+        strcpy(URL->pass, "pass");
 
         printf("Hostname: %s\n", URL->host);
         printf("Path: %s\n", URL->path);
@@ -130,6 +130,9 @@ int main (int argc, char *argv[]) {
         return -1;
     }
 
+
+    // 5) Download the server file
+    
     if (downloadFileFromServer(FTP.data_socket_fd, FTP.control_socket_fd, URL.filename) < 0) {
         printf("ERROR: Download file '%s' from server failed!\n", URL.filename);
         return -1;
