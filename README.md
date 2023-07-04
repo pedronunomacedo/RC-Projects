@@ -1,1 +1,1 @@
-# rcom-project-g0901 (2nd-Project)
+Projects done through the course Computer Networks (RC) in FEUP, LEIC.
